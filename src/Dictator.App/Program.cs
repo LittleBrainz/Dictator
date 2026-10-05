@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Dictator.App.Diagnostics;
+using Dictator.Core;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
@@ -26,7 +27,7 @@ internal static partial class Program
                 throw new PlatformNotSupportedException("Dictator requires Windows 11 x64.");
 
             var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path is unavailable.");
-            var report = StartupReport.Create(Path.GetDirectoryName(executable)!);
+            var report = StartupReport.Create(AppPaths.DistributionRootFromHost(executable));
             if (args.Length == 2 && args[0] == "--smoke-test")
             {
                 report.Write(smokeOutput!, uiReady: false);

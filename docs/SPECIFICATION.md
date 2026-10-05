@@ -7,6 +7,8 @@
 **Settings window title:** Dictator Settings  
 **Purpose:** Personal-use, system-wide Windows voice dictation assistant inspired by the interaction quality of Wispr Flow, implemented as a Windows-first application with a managed C# application layer and a deliberately narrow native C++ core.
 
+**Post-handoff revision, 6 October 2026:** The user requires a small root launcher with unpacked application/runtime files under `lib`, avoiding first-launch runtime extraction. Persistent user data belongs in `%USERPROFILE%\.dictator` (`~/.dictator`), independently of the installation location. These explicit instructions supersede the original deployment/data-path choices in sections 28–29.
+
 ---
 
 ## 1. Executive summary
@@ -1321,12 +1323,14 @@ If callbacks cross from native to managed:
 
 ### 28.1 User data
 
-Use `%LOCALAPPDATA%\Dictator\` for local application data.
+Use `%USERPROFILE%\.dictator\` (`~/.dictator`) for persistent user data: settings, history/database, logs, and any sanitized crash data. Resolve the current user's profile known folder, independently of the executable location or current working directory.
+
+A future installer may place **binaries** under `%LOCALAPPDATA%\Programs\Dictator`, but must not move configuration into the installation directory.
 
 Suggested structure:
 
 ```text
-%LOCALAPPDATA%\Dictator\
+%USERPROFILE%\.dictator\
   settings.json
   dictator.db
   logs\
@@ -1415,14 +1419,15 @@ The intended distribution root is:
 
 ```text
 Dictator/
-  Dictator.exe
+  Dictator.exe                    # small native launcher
   README.txt
   lib/
     Native/
       Dictator.Native.dll
       <other Dictator-owned native dependencies if any>
     WinUI/
-      <app-local WinUI/runtime files when externally staged>
+      Dictator.App.exe            # managed WinUI application host
+      <complete self-contained .NET + Windows App SDK publish tree>
       en-GB/
       en-US/
       zh-CN/
@@ -1432,7 +1437,7 @@ Dictator/
 
 The root must remain tidy: **Dictator.exe**, **README.txt**, and **lib** only.
 
-The implementation may use supported single-file/self-extract behavior for managed/.NET content. Any dependencies that remain external must be under `lib` rather than sprayed into the root.
+Use ordinary self-contained **folder publishing**, not runtime self-extraction. The user extracts the downloaded artifact once; the application then runs directly from `lib/WinUI`. Keep the complete Microsoft-supported runtime/resource layout beside `Dictator.App.exe`. The root launcher forwards arguments and exits after starting the managed host; it waits and propagates the host exit code only for automated smoke checks. There is one resident application process. Do not introduce custom WinUI DLL search-path workarounds.
 
 Because WinUI/.NET deployment behavior is framework-sensitive, **Phase 0 must prove this exact staged layout on a clean Windows machine**. If Windows App SDK 2.5.1 imposes a hard supported-layout constraint, correctness wins; document the smallest necessary exception in the Phase 0 PR rather than inventing unsupported DLL search hacks.
 

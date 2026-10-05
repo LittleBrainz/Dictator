@@ -16,11 +16,12 @@
     <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
     <SelfContained>true</SelfContained>
     <ExpectedDotnetRuntimeVersion>10.0.12</ExpectedDotnetRuntimeVersion>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>Dictator</AssemblyName>
+    <AssemblyName>Dictator.App</AssemblyName>
+    <Product>Dictator</Product>
+    <Title>Dictator</Title>
     <RootNamespace>Dictator.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
@@ -40,9 +41,5 @@
   <Target Name="RequireAppLocalCRTForPublish" BeforeTargets="Publish">
     <Error Condition="'$(BundledVCRuntimeDir)' == '' Or !Exists('$(BundledVCRuntimeDir)/vcruntime140.dll')"
            Text="Set BundledVCRuntimeDir to the hosted MSVC x64 redistributable directory. Use packaging/scripts/Build.ps1." />
-  </Target>
-  <Target Name="RecordBundleContents" BeforeTargets="GenerateSingleFileBundle" DependsOnTargets="PrepareForBundle"
-          Condition="'$(BundleManifestPath)' != ''">
-    <WriteLinesToFile File="$(BundleManifestPath)" Lines="@(FilesToBundle->'%(RelativePath)')" Overwrite="true" />
   </Target>
 </Project>

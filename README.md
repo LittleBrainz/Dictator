@@ -6,8 +6,11 @@ the Settings/Diagnostics shell, versioned native ABI, tests, Windows CI, and
 self-contained distribution. Dictation features are not implemented yet.
 
 Download **Dictator** from a successful Windows Actions run, extract once, and
-launch `Dictator.exe`. No separate .NET, Windows App SDK, or development stack is
-required. The current build is unsigned; Windows policy may block it.
+launch the small root `Dictator.exe` launcher. The full self-contained application
+and runtimes stay under `lib/WinUI`; startup does not extract them into Temp. No
+separate .NET, Windows App SDK, or development stack is required. Persistent user
+data belongs in `%USERPROFILE%\.dictator` (`~/.dictator`), independently of the
+installation folder. The current build is unsigned; Windows policy may block it.
 
 - [Specification](docs/SPECIFICATION.md)
 - [Architecture and verified platform baseline](docs/ARCHITECTURE.md)

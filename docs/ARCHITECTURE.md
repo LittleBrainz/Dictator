@@ -1,6 +1,7 @@
 # Phase 0 architecture
 
-The attached v2 specification is preserved verbatim in `SPECIFICATION.md`.
+The v2 specification is in `SPECIFICATION.md`, updated with the user's explicit
+6 October 2026 deployment and user-data requirements.
 Phase 0 implements the build and deployment chain only. There is no dictation,
 networking, microphone capture, tray, Widget, Hotkey, history, or credential store.
 
@@ -48,56 +49,69 @@ does not claim a comprehensive operating-system memory leak audit.
 ## Supported distribution
 
 ```text
-Dictator.exe
+Dictator.exe                    # small native launcher, static CRT
 README.txt
 lib/
+  WinUI/
+    Dictator.App.exe             # managed application
+    Dictator.App.dll
+    <complete app-local .NET / Windows App SDK / VC runtime and resources>
+    en-GB/
+    en-US/
+    zh-CN/
   Native/Dictator.Native.dll
   build-info.json
 ```
 
-The executable uses the Windows App SDK's supported unpackaged self-contained
-single-file deployment. `EnableMsixTooling`, `WindowsPackageType=None`,
-`WindowsAppSDKSelfContained`, `SelfContained`, `IncludeAllContentForSelfExtract`,
-and `PublishSingleFile` are explicit. Trimming and Native AOT are disabled.
-The SDK's registration-free automatic initializer owns runtime loading and
-resource resolution. The SDK installs nothing; .NET extracts bundled content
-automatically on first launch. No custom WinUI DLL search path is installed.
+On 6 October 2026 the user reported a roughly 15-second first start with the
+self-extracting executable, followed by roughly 0.5-second subsequent starts.
+The accepted replacement is a small native launcher at the root and ordinary
+self-contained folder publishing under `lib/WinUI`. `PublishSingleFile=false`;
+trimming and Native AOT remain disabled. GitHub's artifact ZIP is extracted once.
+No application or runtime payload is extracted during application startup.
 
-Microsoft's self-contained overview contains a statement that single-file is not
-available for WinUI, while its specific unpackaged single-file guide and the
-2.5.1 package's `WindowsAppSDKSingleFileVerifyConfiguration` target explicitly
-support this configuration. The latter documented configuration and SDK validation
-are used; Windows CI and clean-PC launch acceptance must establish that it works.
+The entire supported publish tree stays beside the managed host, including neutral
+PRI resources and all SDK locales. No individual SDK DLLs are moved away from the
+host, no PRI files are rewritten, and no WinUI DLL search paths are customized.
+The SDK's registration-free automatic initializer owns runtime/resource loading.
+Both .NET and Windows App SDK are self-contained. Microsoft's native modules use
+the app-local VC redistributable and Microsoft.VCRTForwarders.140; our launcher
+and native DLL use the static CRT. No separately installed runtime is required.
 
-- https://learn.microsoft.com/windows/apps/package-and-deploy/unpackage-winui-app#single-file-exe
 - https://learn.microsoft.com/windows/apps/package-and-deploy/self-contained-deploy/deploy-self-contained-apps
 
-WinUI resources, neutral fallback, and **all** SDK locales (including en-GB,
-en-US, zh-CN) remain bundled. This avoids pruning files that a PRI index references.
-`lib/WinUI` is unnecessary when no WinUI content remains external. If a future
-supported publish requires external modules, they belong under `lib/WinUI` with
-their resources, and any layout change requires packaged proof and documentation.
-Staging fails if publish leaves an unexpected dependency outside the bundle.
+The launcher discovers its own absolute path with `GetModuleFileNameW`, calls
+`CreateProcessW` with the absolute `lib/WinUI/Dictator.App.exe` path, and forwards
+the original argument tail verbatim. It changes neither cwd nor runtime search
+paths. It closes its handles and exits immediately on normal launch; only the
+managed host remains. This short-lived launch process is an explicit exception to
+having just one process at startup, not a resident helper/service architecture.
+For CI smoke arguments only, it waits and returns the host's exit code. Missing
+host/runtime files or process-creation failures produce an actionable launch
+error; smoke mode returns nonzero without a modal dialog.
 
-.NET 10's Windows `singlefilehost.exe` contains the native CLR and host. Its
-official runtime pack `RuntimeList.xml` marks `coreclr.dll` and `hostpolicy.dll`
-as `DropFromSingleFile=true`; those separate files should not be required in the
-bundle or extraction directory. Validation instead requires the bundled CoreLib,
-checks the self-contained runtime configuration, and verifies the running runtime
-version with external .NET paths unavailable.
-
-The native DLL uses the static MSVC CRT. Microsoft's runtime modules receive the
-app-local x64 VC redistributable and Microsoft.VCRTForwarders.140 inside the bundle.
-The managed native resolver loads only Dictator's DLL by absolute path from
-`lib/Native`. It derives that path from `Environment.ProcessPath`, because
-`AppContext.BaseDirectory` points to the framework's extraction directory.
-The current working directory is never used for dependency discovery.
+`AppPaths.DistributionRootFromHost` resolves the installation root from the known
+`lib/WinUI` layout. The managed native resolver loads Dictator's DLL by absolute
+path from `lib/Native`. Cwd is never used for dependency discovery. Diagnostics
+reports the installation root and actual app-local runtime directory.
 
 `build-info.json` records product, Git SHA, CI run, configuration, architecture,
 SDK/runtime versions and ABI. Startup verifies product/runtime/ABI identity before
-showing Diagnostics. Missing native files and incompatible metadata give an
-actionable startup error; errors preceding managed entry (OS policy, apphost or SDK
-automatic initialization) may be surfaced by Windows/.NET itself.
+showing Diagnostics. Missing native files and incompatible metadata produce an
+error; failures preceding managed entry may be surfaced by Windows/.NET itself.
+
+## Persistent user data
+
+The user's explicit requirement supersedes the original `%LOCALAPPDATA%\Dictator`
+data location. `AppPaths.UserDataRoot` resolves the user's profile known folder
+and appends `.dictator`, giving `%USERPROFILE%\.dictator` (`~/.dictator`). It does
+not depend on install location, cwd, or a future installer. Settings, the local
+database/history, logs and any sanitized crash data will live there. Installation
+under `%LOCALAPPDATA%\Programs\Dictator` may be added later for binaries only.
+API keys still belong in Windows Credential Manager.
+
+Phase 0 reports and verifies this location; it has no settings/history persistence
+yet and does not create an empty config file or migrate nonexistent user data.
 
 ## Repository and acceptance status
 

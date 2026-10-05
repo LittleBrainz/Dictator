@@ -2,8 +2,13 @@ Dictator - Phase 0 personal build
 
 Extract the complete Dictator artifact once, then double-click Dictator.exe.
 Windows 11 x64 is required. No separate .NET, Windows App SDK, or development
-tools are needed. The bundled runtime extracts automatically on first launch.
-Keep the lib folder next to Dictator.exe.
+tools are needed. Dictator.exe is a small launcher; the application and runtimes
+are already unpacked under lib/WinUI, so startup does not extract them into Temp.
+Keep the complete lib folder next to Dictator.exe.
+
+Persistent settings and local data belong in %USERPROFILE%\.dictator, independent
+of the installation folder. Phase 0 shows this path in Diagnostics; settings and
+history persistence are implemented in later phases.
 
 This build opens Dictator Settings with Diagnostics. Dictation, the Widget,
 Hotkey, and notification-area recovery are not available in Phase 0.

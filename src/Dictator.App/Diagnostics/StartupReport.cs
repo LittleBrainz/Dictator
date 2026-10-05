@@ -51,14 +51,16 @@ internal sealed record StartupReport(BuildInfo Build, uint NativeAbi, NativeSnap
         Native snapshot: {Marshal.SizeOf<NativeSnapshot>()} bytes; sequence {Snapshot.Sequence}
         Native consumer thread: {Snapshot.PollThreadId}
         UTF-16 round-trip: {RoundTrip}
-        Executable folder: {DistributionRoot}
-        Runtime extraction folder: {AppContext.BaseDirectory}
+        Installation folder: {DistributionRoot}
+        Application/runtime folder: {AppContext.BaseDirectory}
+        User data folder: {AppPaths.UserDataRoot}
         """;
 
     internal void Write(string path, bool uiReady) => File.WriteAllText(path,
         JsonSerializer.Serialize(new { status = "ok", uiReady, build = Build, nativeAbi = NativeAbi,
             snapshot = Snapshot, roundTrip = RoundTrip, distributionRoot = DistributionRoot,
-            runtimeDirectory = AppContext.BaseDirectory, runtimeVersion = Environment.Version.ToString() },
+            runtimeDirectory = AppContext.BaseDirectory, runtimeVersion = Environment.Version.ToString(),
+            userDataDirectory = AppPaths.UserDataRoot },
             new JsonSerializerOptions { WriteIndented = true, IncludeFields = true }));
 
     internal static void WriteError(string path, Exception error) => File.WriteAllText(path,

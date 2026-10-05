@@ -1,0 +1,5 @@
+add_executable(Dictator.Launcher WIN32 launcher.cpp launcher.manifest)
+set_target_properties(Dictator.Launcher PROPERTIES OUTPUT_NAME Dictator)
+target_compile_definitions(Dictator.Launcher PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_options(Dictator.Launcher PRIVATE /W4 /WX /permissive- /utf-8)
+target_link_libraries(Dictator.Launcher PRIVATE user32 shell32)

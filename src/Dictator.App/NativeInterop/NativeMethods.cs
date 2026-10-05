@@ -38,7 +38,7 @@ internal static partial class NativeMethods
     private static string? libraryPath;
 
     // Called once before any P/Invoke. Distribution path is based on the executable,
-    // not cwd or AppContext.BaseDirectory (which points inside single-file extraction).
+    // not cwd or the managed host's lib/WinUI directory.
     internal static void Initialize(string distributionRoot)
     {
         if (libraryPath is not null) throw new InvalidOperationException("Native resolver is already initialized.");

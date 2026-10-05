@@ -38,8 +38,8 @@ jobs:
           name: Phase0-test-results
           path: |
             artifacts/test-results/
-            artifacts/bundle-manifest.txt
-            artifacts/package smoke with spaces/*.json
+            artifacts/publish-manifest.txt
+            artifacts/package smoke with spaces*/*.json
           if-no-files-found: ignore
           retention-days: 5
       - name: Upload one-extraction application

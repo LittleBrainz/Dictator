@@ -5,34 +5,29 @@ Set-StrictMode -Version Latest
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $publish = Join-Path $repo 'artifacts/publish'
 $stage = Join-Path $repo 'artifacts/Dictator'
-$manifest = Join-Path $repo 'artifacts/bundle-manifest.txt'
-
-# Never silently discard a dependency that escaped the single-file bundle.
-$external = @(Get-ChildItem $publish | Where-Object { $_.Name -ne 'Dictator.exe' -and $_.Extension -ne '.pdb' })
-if ($external.Count) { throw "Unexpected unbundled publish content: $($external.Name -join ', '). Investigate the supported deployment layout." }
-if (-not (Test-Path "$publish/Dictator.exe")) { throw 'Published executable is missing.' }
-if (-not (Test-Path $manifest)) { throw 'Single-file bundle manifest is missing.' }
-$bundled = @(Get-Content $manifest)
-Write-Host "Bundle contains $($bundled.Count) files; neutral PRI resources: $(($bundled | Where-Object { $_ -match '\.pri$' }) -join ', ')"
-# .NET 10's Windows singlefilehost contains the native CLR/host itself. Its
-# RuntimeList.xml marks coreclr/hostpolicy DropFromSingleFile=true by design.
-foreach ($dependency in @('System.Private.CoreLib.dll', 'Dictator.runtimeconfig.json', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'Dictator.pri', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
-    if (-not ($bundled | Where-Object { ($_ -replace '\\', '/') -match "(^|/)$([regex]::Escape($dependency))$" })) {
-        throw "Required runtime content is absent from the single-file bundle: $dependency"
-    }
-}
-# Retain the SDK's neutral resources and every locale. No PRI rewriting or locale pruning.
-foreach ($locale in @('en-GB', 'en-US', 'zh-CN')) {
-    if (-not ($bundled | Where-Object { ($_ -replace '\\', '/') -match "(^|/)$locale/" })) {
-        throw "Required WinUI runtime locale is absent from the bundle: $locale"
-    }
-}
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item "$stage/lib/Native" -ItemType Directory -Force | Out-Null
-Copy-Item "$publish/Dictator.exe" "$stage/Dictator.exe"
+New-Item "$stage/lib/WinUI" -ItemType Directory -Force | Out-Null
+# Preserve the complete supported publish tree beside the managed host. No runtime
+# relocation within that tree, resource rewriting, or dependency/locale pruning.
+Copy-Item "$publish/*" "$stage/lib/WinUI" -Recurse
+Copy-Item "$repo/artifacts/native/bin/Release/Dictator.exe" "$stage/Dictator.exe"
 Copy-Item "$repo/artifacts/native/bin/Release/Dictator.Native.dll" "$stage/lib/Native/Dictator.Native.dll"
 Copy-Item "$repo/packaging/README.txt" "$stage/README.txt"
+$runtime = Join-Path $stage 'lib/WinUI'
+foreach ($dependency in @('Dictator.App.exe', 'Dictator.App.runtimeconfig.json', 'System.Private.CoreLib.dll', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
+    if (-not (Test-Path (Join-Path $runtime $dependency))) { throw "Required app-local runtime file is missing: $dependency" }
+}
+if (-not (Test-Path "$runtime/Dictator.App.pri") -and -not (Test-Path "$runtime/resources.pri")) {
+    throw 'The managed application PRI resource is missing.'
+}
+foreach ($locale in @('en-GB', 'en-US', 'zh-CN')) {
+    if (-not (Test-Path (Join-Path $runtime $locale))) { throw "Required WinUI runtime locale is missing: $locale" }
+}
+Get-ChildItem $runtime -Recurse -File | ForEach-Object {
+    [IO.Path]::GetRelativePath($runtime, $_.FullName)
+} | Set-Content "$repo/artifacts/publish-manifest.txt" -Encoding utf8NoBOM
 
 [xml]$sdkPin = Get-Content "$repo/src/Dictator.App/Dictator.App.csproj" -Raw
 [xml]$packages = Get-Content "$repo/Directory.Packages.props" -Raw
@@ -53,4 +48,4 @@ $metadata = [ordered]@{
     nativeAbiVersion = 1
 }
 $metadata | ConvertTo-Json | Set-Content "$stage/lib/build-info.json" -Encoding utf8NoBOM
-Write-Host "Staged self-contained Dictator with .NET $($metadata.dotnetRuntimeVersion), Windows App SDK $wasdk, Windows SDK $WindowsSdkVersion."
+Write-Host "Staged app-local Dictator with .NET $($metadata.dotnetRuntimeVersion), Windows App SDK $wasdk, Windows SDK $WindowsSdkVersion. Root launcher: $((Get-Item "$stage/Dictator.exe").Length) bytes."

@@ -10,7 +10,7 @@ if (Compare-Object ($expected | Sort-Object) $actual) { throw "Distribution root
 $identity = Get-Content "$PackageRoot/lib/build-info.json" -Raw | ConvertFrom-Json
 if ($identity.architecture -ne 'win-x64' -or $identity.nativeAbiVersion -ne 1) { throw 'Package build identity is invalid.' }
 
-$sandbox = Join-Path $repo 'artifacts/package smoke with spaces'
+$sandbox = Join-Path $repo 'artifacts/package smoke with spaces 中文'
 if (Test-Path $sandbox) { Remove-Item $sandbox -Recurse -Force }
 New-Item $sandbox -ItemType Directory | Out-Null
 # Model the user's one extraction. This temporary zip is never uploaded.
@@ -19,7 +19,11 @@ Expand-Archive -Path "$sandbox/Dictator.zip" -DestinationPath "$sandbox/extracte
 $extracted = Join-Path $sandbox 'extracted app'
 $working = Join-Path $sandbox 'different working directory'
 New-Item $working -ItemType Directory | Out-Null
-$env:DOTNET_BUNDLE_EXTRACT_BASE_DIR = Join-Path $sandbox 'isolated runtime extraction'
+$savedEnvironment = @{}
+foreach ($name in @('DOTNET_ROOT', 'DOTNET_ROOT_X64', 'DOTNET_MULTILEVEL_LOOKUP', 'DOTNET_BUNDLE_EXTRACT_BASE_DIR')) {
+    $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+}
+$env:DOTNET_BUNDLE_EXTRACT_BASE_DIR = Join-Path $sandbox 'must not extract runtime'
 # SDK/runtime installations on the runner must not be used by the packaged application.
 $env:DOTNET_ROOT = Join-Path $sandbox 'no installed dotnet'
 $env:DOTNET_ROOT_X64 = $env:DOTNET_ROOT
@@ -27,22 +31,34 @@ $env:DOTNET_MULTILEVEL_LOOKUP = '0'
 
 function Invoke-Smoke([string] $Mode, [bool] $ExpectUi) {
     $output = Join-Path $sandbox "$Mode.json"
+    Remove-Item $output -ErrorAction SilentlyContinue
+    $timer = [Diagnostics.Stopwatch]::StartNew()
     $process = Start-Process "$extracted/Dictator.exe" -ArgumentList @("--$Mode", "`"$output`"") -WorkingDirectory $working -PassThru
     if (-not $process.WaitForExit(90000)) {
         $process.Kill($true)
         throw "Packaged $Mode timed out."
     }
-    if ($process.ExitCode -ne 0 -or -not (Test-Path $output)) { throw "Packaged $Mode failed with exit code $($process.ExitCode)." }
+    if ($process.ExitCode -ne 0 -or -not (Test-Path $output)) {
+        $detail = if (Test-Path $output) { Get-Content $output -Raw } else { 'No startup report was written.' }
+        throw "Packaged $Mode failed with exit code $($process.ExitCode): $detail"
+    }
     $report = Get-Content $output -Raw | ConvertFrom-Json
     if ($report.status -ne 'ok' -or $report.uiReady -ne $ExpectUi -or $report.nativeAbi -ne 1 -or
         $report.build.GitCommit -ne $identity.gitCommit -or $report.runtimeVersion -ne $identity.dotnetRuntimeVersion -or
         $report.roundTrip -ne 'Dictator — UTF-16 ✓ 中文 😃' -or $report.snapshot.StructSize -ne 24 -or
         $report.distributionRoot -ne $extracted) { throw "Packaged $Mode identity/ABI/UI verification failed." }
-    # Prove bundled WinUI resources were really extracted, rather than resolved from the runner.
-    foreach ($file in @('Microsoft.UI.Xaml.dll', 'Dictator.pri', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'System.Private.CoreLib.dll', 'vcruntime140.dll')) {
-        if (-not (Test-Path (Join-Path $report.runtimeDirectory $file))) { throw "Extracted dependency missing: $file" }
+    $runtime = [IO.Path]::GetFullPath((Join-Path $extracted 'lib/WinUI'))
+    if ([IO.Path]::TrimEndingDirectorySeparator($report.runtimeDirectory) -ne $runtime) {
+        throw "The app is not running from its installed lib/WinUI folder: $($report.runtimeDirectory)"
     }
-    $runtimeConfig = Get-Content (Join-Path $report.runtimeDirectory 'Dictator.runtimeconfig.json') -Raw | ConvertFrom-Json
+    if (Test-Path $env:DOTNET_BUNDLE_EXTRACT_BASE_DIR) { throw 'Application startup unexpectedly extracted a runtime.' }
+    $data = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) '.dictator'
+    if ($report.userDataDirectory -ne $data) { throw 'User data does not resolve to the profile .dictator directory.' }
+    # Runtime modules and neutral resources must already be present after unzipping.
+    foreach ($file in @('Microsoft.UI.Xaml.dll', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'System.Private.CoreLib.dll', 'coreclr.dll', 'hostfxr.dll', 'vcruntime140.dll')) {
+        if (-not (Test-Path (Join-Path $runtime $file))) { throw "App-local dependency missing: $file" }
+    }
+    $runtimeConfig = Get-Content (Join-Path $runtime 'Dictator.App.runtimeconfig.json') -Raw | ConvertFrom-Json
     if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'framework' -or
         $runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'frameworks') {
         throw 'Package runtime configuration depends on an installed framework.'
@@ -50,13 +66,41 @@ function Invoke-Smoke([string] $Mode, [bool] $ExpectUi) {
     $included = @($runtimeConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' -and $_.version -eq $identity.dotnetRuntimeVersion })
     if ($included.Count -ne 1) { throw 'Self-contained runtime identity is absent from the extracted configuration.' }
     foreach ($locale in @('en-GB', 'en-US', 'zh-CN')) {
-        if (-not (Test-Path (Join-Path $report.runtimeDirectory $locale))) { throw "Extracted locale missing: $locale" }
+        if (-not (Test-Path (Join-Path $runtime $locale))) { throw "App-local locale missing: $locale" }
     }
+    Write-Host "$Mode completed in $($timer.Elapsed.TotalSeconds.ToString('F2')) s with app-local runtime and profile data path."
 }
 
 try {
     Invoke-Smoke 'smoke-test' $false
+    Invoke-Smoke 'smoke-test' $false
     Invoke-Smoke 'ui-smoke-test' $true
+
+    # Normal launches must leave only the managed host running, not a resident helper.
+    $launcher = Start-Process "$extracted/Dictator.exe" -WorkingDirectory $working -PassThru
+    $hostProcess = $null
+    try {
+        if (-not $launcher.WaitForExit(10000) -or $launcher.ExitCode -ne 0) { throw 'The normal launcher did not exit promptly.' }
+        $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $($launcher.Id)" |
+            Where-Object { $_.ExecutablePath -eq [IO.Path]::GetFullPath((Join-Path $extracted 'lib/WinUI/Dictator.App.exe')) })
+        if ($children.Count -ne 1) { throw 'Normal launch did not leave exactly one managed application process.' }
+        $hostProcess = [Diagnostics.Process]::GetProcessById($children[0].ProcessId)
+        $deadline = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            $hostProcess.Refresh()
+            if ($hostProcess.MainWindowHandle -ne 0) { break }
+            Start-Sleep -Milliseconds 100
+        } while (-not $hostProcess.HasExited -and $deadline.Elapsed.TotalSeconds -lt 15)
+        if ($hostProcess.MainWindowHandle -eq 0 -or -not $hostProcess.CloseMainWindow() -or -not $hostProcess.WaitForExit(30000)) {
+            throw 'Normal Settings window launch/close verification failed.'
+        }
+        if ($hostProcess.ExitCode -ne 0) { throw 'The normal application exited with an error.' }
+        Write-Host 'Normal root launcher exits promptly; its one managed host opens and closes successfully.'
+    }
+    finally {
+        if ($hostProcess -and -not $hostProcess.HasExited) { $hostProcess.Kill($true) }
+        if (-not $launcher.HasExited) { $launcher.Kill($true) }
+    }
 
     # Useful dependency error is also part of the staged product contract.
     Remove-Item "$extracted/lib/Native/Dictator.Native.dll"
@@ -66,8 +110,15 @@ try {
     if ($missing.ExitCode -eq 0 -or -not (Test-Path $missingResult)) { throw 'Missing native DLL did not produce a useful error.' }
     $errorReport = Get-Content $missingResult -Raw | ConvertFrom-Json
     if ($errorReport.status -ne 'error' -or $errorReport.error -ne 'FileNotFoundException') { throw 'Unexpected missing-dependency result.' }
-    Write-Host 'Packaged ABI, real WinUI launch, extraction, locales, build identity, and dependency error checks passed.'
+    # A damaged host folder must fail promptly in the native launcher, without a dialog in smoke mode.
+    Remove-Item "$extracted/lib/WinUI/Dictator.App.exe"
+    $missingHost = Start-Process "$extracted/Dictator.exe" -ArgumentList @('--smoke-test', "`"$missingResult`"") -WorkingDirectory $working -PassThru
+    if (-not $missingHost.WaitForExit(10000)) { $missingHost.Kill($true); throw 'Missing host probe timed out.' }
+    if ($missingHost.ExitCode -eq 0) { throw 'The launcher accepted a missing managed host.' }
+    Write-Host 'Packaged launcher, ABI, real WinUI launch, app-local runtimes/locales, profile data path, and dependency error checks passed.'
 }
 finally {
-    Remove-Item Env:DOTNET_ROOT, Env:DOTNET_ROOT_X64, Env:DOTNET_MULTILEVEL_LOOKUP, Env:DOTNET_BUNDLE_EXTRACT_BASE_DIR -ErrorAction SilentlyContinue
+    foreach ($name in $savedEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+    }
 }

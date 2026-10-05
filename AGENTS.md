@@ -14,6 +14,11 @@ Phase 1 requires green Windows CI and a successful manual staged-artifact launch
 - Native buffers and handles have explicit ownership; no exceptions cross the ABI.
 - Real-time audio must never block on managed code, UI, network, disk, or logging.
 - The future Widget must remain non-activating and interactive while preserving focus.
+- Persistent settings/database/logs belong in `%USERPROFILE%\.dictator` (`~/.dictator`),
+  independently of install location. A future installer may place binaries under
+  `%LOCALAPPDATA%\Programs\Dictator`. No config lives with the binaries.
+- The root `Dictator.exe` is a short-lived native launcher. The managed host and
+  complete self-contained publish tree live in `lib/WinUI`; no runtime self-extraction.
 - Credentials belong only in Windows Credential Manager. No telemetry or audio retention.
 - No transcript content in logs by default. Never dump credentials or environment values.
 - User-facing words: Dictator Settings, Widget, Hotkey, Talk/Talking, Phrase Shortcuts.
@@ -42,7 +47,7 @@ The exact complete restore/build/test/publish/stage/smoke command is:
 ```
 
 It locates the hosted x64 VC redistributable, selects the latest installed stable
-Windows SDK, publishes with the required app-local runtime and bundle manifest,
+Windows SDK, publishes the complete app-local runtime tree under `lib/WinUI`,
 and runs ABI tests against `artifacts/Dictator/lib/Native/Dictator.Native.dll`.
 To repeat only package verification:
 
