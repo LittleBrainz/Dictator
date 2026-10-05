@@ -12,7 +12,8 @@ $external = @(Get-ChildItem $publish | Where-Object { $_.Name -ne 'Dictator.exe'
 if ($external.Count) { throw "Unexpected unbundled publish content: $($external.Name -join ', '). Investigate the supported deployment layout." }
 if (-not (Test-Path "$publish/Dictator.exe")) { throw 'Published executable is missing.' }
 if (-not (Test-Path $manifest)) { throw 'Single-file bundle manifest is missing.' }
-$bundled = Get-Content $manifest
+$bundled = @(Get-Content $manifest)
+Write-Host "Bundle contents ($($bundled.Count) entries): $($bundled -join ', ')"
 foreach ($dependency in @('coreclr.dll', 'hostpolicy.dll', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'resources.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
     if (-not ($bundled | Where-Object { ($_ -replace '\\', '/') -match "(^|/)$([regex]::Escape($dependency))$" })) {
         throw "Required runtime content is absent from the single-file bundle: $dependency"

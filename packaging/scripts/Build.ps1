@@ -42,7 +42,7 @@ Invoke-Checked { cmake --build artifacts/native --config Release --parallel 2 }
 Invoke-Checked { ctest --test-dir artifacts/native -C Release --output-on-failure }
 Invoke-Checked { dotnet restore Dictator.sln --locked-mode }
 Invoke-Checked { dotnet test tests/Dictator.Core.Tests -c Release --no-restore --logger 'trx;LogFileName=core.trx' --results-directory artifacts/test-results }
-Invoke-Checked { dotnet publish src/Dictator.App -c Release --no-restore -o artifacts/publish "-p:BundledVCRuntimeDir=$crt" "-p:BundleManifestPath=$manifest" }
+Invoke-Checked { dotnet publish src/Dictator.App -c Release --no-restore --self-contained true -o artifacts/publish "-p:BundledVCRuntimeDir=$crt" "-p:BundleManifestPath=$manifest" }
 & "$PSScriptRoot/Stage.ps1" -WindowsSdkVersion $sdkVersion
 $env:DICTATOR_DISTRIBUTION_ROOT = Join-Path $repo 'artifacts/Dictator'
 Invoke-Checked { dotnet test tests/Dictator.Interop.Tests -c Release --no-restore --logger 'trx;LogFileName=interop.trx' --results-directory artifacts/test-results }
