@@ -79,6 +79,13 @@ supported publish requires external modules, they belong under `lib/WinUI` with
 their resources, and any layout change requires packaged proof and documentation.
 Staging fails if publish leaves an unexpected dependency outside the bundle.
 
+.NET 10's Windows `singlefilehost.exe` contains the native CLR and host. Its
+official runtime pack `RuntimeList.xml` marks `coreclr.dll` and `hostpolicy.dll`
+as `DropFromSingleFile=true`; those separate files should not be required in the
+bundle or extraction directory. Validation instead requires the bundled CoreLib,
+checks the self-contained runtime configuration, and verifies the running runtime
+version with external .NET paths unavailable.
+
 The native DLL uses the static MSVC CRT. Microsoft's runtime modules receive the
 app-local x64 VC redistributable and Microsoft.VCRTForwarders.140 inside the bundle.
 The managed native resolver loads only Dictator's DLL by absolute path from

@@ -39,9 +39,16 @@ function Invoke-Smoke([string] $Mode, [bool] $ExpectUi) {
         $report.roundTrip -ne 'Dictator — UTF-16 ✓ 中文 😃' -or $report.snapshot.StructSize -ne 24 -or
         $report.distributionRoot -ne $extracted) { throw "Packaged $Mode identity/ABI/UI verification failed." }
     # Prove bundled WinUI resources were really extracted, rather than resolved from the runner.
-    foreach ($file in @('Microsoft.UI.Xaml.dll', 'resources.pri', 'coreclr.dll', 'vcruntime140.dll')) {
+    foreach ($file in @('Microsoft.UI.Xaml.dll', 'resources.pri', 'System.Private.CoreLib.dll', 'vcruntime140.dll')) {
         if (-not (Test-Path (Join-Path $report.runtimeDirectory $file))) { throw "Extracted dependency missing: $file" }
     }
+    $runtimeConfig = Get-Content (Join-Path $report.runtimeDirectory 'Dictator.runtimeconfig.json') -Raw | ConvertFrom-Json
+    if ($runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'framework' -or
+        $runtimeConfig.runtimeOptions.PSObject.Properties.Name -contains 'frameworks') {
+        throw 'Package runtime configuration depends on an installed framework.'
+    }
+    $included = @($runtimeConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' -and $_.version -eq $identity.dotnetRuntimeVersion })
+    if ($included.Count -ne 1) { throw 'Self-contained runtime identity is absent from the extracted configuration.' }
     foreach ($locale in @('en-GB', 'en-US', 'zh-CN')) {
         if (-not (Test-Path (Join-Path $report.runtimeDirectory $locale))) { throw "Extracted locale missing: $locale" }
     }
