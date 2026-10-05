@@ -39,7 +39,7 @@ function Invoke-Smoke([string] $Mode, [bool] $ExpectUi) {
         $report.roundTrip -ne 'Dictator — UTF-16 ✓ 中文 😃' -or $report.snapshot.StructSize -ne 24 -or
         $report.distributionRoot -ne $extracted) { throw "Packaged $Mode identity/ABI/UI verification failed." }
     # Prove bundled WinUI resources were really extracted, rather than resolved from the runner.
-    foreach ($file in @('Microsoft.UI.Xaml.dll', 'resources.pri', 'System.Private.CoreLib.dll', 'vcruntime140.dll')) {
+    foreach ($file in @('Microsoft.UI.Xaml.dll', 'Dictator.pri', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'System.Private.CoreLib.dll', 'vcruntime140.dll')) {
         if (-not (Test-Path (Join-Path $report.runtimeDirectory $file))) { throw "Extracted dependency missing: $file" }
     }
     $runtimeConfig = Get-Content (Join-Path $report.runtimeDirectory 'Dictator.runtimeconfig.json') -Raw | ConvertFrom-Json

@@ -13,10 +13,10 @@ if ($external.Count) { throw "Unexpected unbundled publish content: $($external.
 if (-not (Test-Path "$publish/Dictator.exe")) { throw 'Published executable is missing.' }
 if (-not (Test-Path $manifest)) { throw 'Single-file bundle manifest is missing.' }
 $bundled = @(Get-Content $manifest)
-Write-Host "Bundle contents ($($bundled.Count) entries): $($bundled -join ', ')"
+Write-Host "Bundle contains $($bundled.Count) files; neutral PRI resources: $(($bundled | Where-Object { $_ -match '\.pri$' }) -join ', ')"
 # .NET 10's Windows singlefilehost contains the native CLR/host itself. Its
 # RuntimeList.xml marks coreclr/hostpolicy DropFromSingleFile=true by design.
-foreach ($dependency in @('System.Private.CoreLib.dll', 'Dictator.runtimeconfig.json', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'resources.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
+foreach ($dependency in @('System.Private.CoreLib.dll', 'Dictator.runtimeconfig.json', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'Dictator.pri', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
     if (-not ($bundled | Where-Object { ($_ -replace '\\', '/') -match "(^|/)$([regex]::Escape($dependency))$" })) {
         throw "Required runtime content is absent from the single-file bundle: $dependency"
     }
