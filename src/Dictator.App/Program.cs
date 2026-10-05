@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Dictator.App.Diagnostics;
+using Dictator.App.Lifecycle;
 using Dictator.Core;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -12,52 +14,70 @@ internal static partial class Program
     private static int Main(string[] args)
     {
         string? smokeOutput = null;
+        App? application = null;
+        var timer = Stopwatch.StartNew();
         try
         {
-            if (args.Length != 0 && (args.Length != 2 ||
-                args[0] is not ("--smoke-test" or "--ui-smoke-test" or "--launch-smoke-test")))
-                throw new ArgumentException("Usage: Dictator.exe [--smoke-test|--ui-smoke-test|--launch-smoke-test <absolute-result-path>]");
-            if (args.Length == 2)
-            {
-                if (!Path.IsPathFullyQualified(args[1]))
-                    throw new ArgumentException("The smoke-test result path must be absolute.");
-                smokeOutput = args[1];
-            }
+            var options = LaunchOptions.Parse(args);
+            smokeOutput = options.ReportPath;
             if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) || !Environment.Is64BitProcess)
                 throw new PlatformNotSupportedException("Dictator requires Windows 11 x64.");
-
             var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path is unavailable.");
-            var report = StartupReport.Create(AppPaths.DistributionRootFromHost(executable));
-            if (args.Length == 2 && args[0] == "--smoke-test")
+            var root = AppPaths.DistributionRootFromHost(executable);
+            using (var instance = options.IsProbe ? null : new SingleInstance(options.TestDataRoot ?? AppPaths.UserDataRoot))
             {
-                report.Write(smokeOutput!, uiReady: false);
-                return 0;
+                if (instance is { IsOwner: false })
+                {
+                    var command = options.Command == "launch" ? "open-settings" : options.Command;
+                    var response = instance.SendAsync(command).GetAwaiter().GetResult();
+                    if (smokeOutput is not null) File.WriteAllText(smokeOutput, response);
+                    return 0;
+                }
+                if (options.IsTest && options.Command is not ("launch" or "startup"))
+                    throw new InvalidOperationException("The test resident instance is not running.");
+                var report = StartupReport.Create(root);
+                if (options.Command == "--smoke-test") { report.Write(smokeOutput!, uiReady: false); return 0; }
+                var ready = new TaskCompletionSource<App>(TaskCreationOptions.RunContinuationsAsynchronously);
+                instance?.Listen(async command => {
+                    var resident = await ready.Task.ConfigureAwait(false);
+                    await resident.ResidentReady.Task.ConfigureAwait(false);
+                    return await resident.DispatchAsync(command).ConfigureAwait(false);
+                });
+                WinRT.ComWrappersSupport.InitializeComWrappers();
+                try
+                {
+                    Application.Start(initialization =>
+                    {
+                        SynchronizationContext.SetSynchronizationContext(
+                            new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
+                        application = new App(report, options, timer);
+                        // OnLaunched executes after Application.Start initialization.
+                        // Queue activation after that event has constructed Settings.
+                        DispatcherQueue.GetForCurrentThread().TryEnqueue(() => ready.TrySetResult(application));
+                    });
+                }
+                finally { application?.Cleanup(); }
+            } // Release the instance mutex and pipe before launching the replacement.
+            if (application?.RestartRequested == true)
+            {
+                var restart = new ProcessStartInfo(Path.Combine(root, "Dictator.exe")) { UseShellExecute = false, WorkingDirectory = root };
+                if (options.IsTest)
+                {
+                    restart.ArgumentList.Add("--lifecycle-test"); restart.ArgumentList.Add(options.TestDataRoot!);
+                    restart.ArgumentList.Add(options.ReportPath!); restart.ArgumentList.Add("startup");
+                }
+                else restart.ArgumentList.Add("--restart");
+                using var child = Process.Start(restart) ?? throw new IOException("Dictator could not restart.");
             }
-
-            WinRT.ComWrappersSupport.InitializeComWrappers();
-            Application.Start(initialization =>
-            {
-                SynchronizationContext.SetSynchronizationContext(
-                    new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-                _ = new App(report, smokeOutput, exitAfterReport: args.Length == 2 && args[0] == "--ui-smoke-test");
-            });
             return 0;
         }
         catch (Exception error)
         {
-            if (smokeOutput is not null)
-            {
-                StartupReport.WriteError(smokeOutput, error);
-            }
-            else
-            {
-                MessageBox(0, $"Dictator could not start.\n\n{error.Message}\n\nExtract the complete Dictator artifact to a writable folder and launch Dictator.exe again. Include the artifact's lib/build-info.json when reporting the failure.",
-                    "Dictator launch error", 0x10);
-            }
+            if (smokeOutput is not null) StartupReport.WriteError(smokeOutput, error);
+            else MessageBox(0, $"Dictator could not start.\n\n{error.Message}\n\nKeep the complete lib folder beside Dictator.exe. Include lib/build-info.json when reporting a failure.", "Dictator launch error", 0x10);
             return 1;
         }
     }
-
     [LibraryImport("user32.dll", EntryPoint = "MessageBoxW", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int MessageBox(nint owner, string text, string caption, uint type);
 }

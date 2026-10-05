@@ -65,7 +65,7 @@ function Invoke-Smoke([string] $Mode, [bool] $ExpectUi) {
     }
     $included = @($runtimeConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' -and $_.version -eq $identity.dotnetRuntimeVersion })
     if ($included.Count -ne 1) { throw 'Self-contained runtime identity is absent from the extracted configuration.' }
-    foreach ($locale in @('en-GB', 'en-US', 'zh-CN')) {
+    foreach ($locale in @('en-GB', 'en-US', 'fr-FR', 'zh-CN')) {
         if (-not (Test-Path (Join-Path $runtime $locale))) { throw "App-local locale missing: $locale" }
     }
     Write-Host "$Mode completed in $($timer.Elapsed.TotalSeconds.ToString('F2')) s with app-local runtime and profile data path."
@@ -108,6 +108,8 @@ try {
         if ($hostProcess -and -not $hostProcess.HasExited) { $hostProcess.Kill($true) }
         if (-not $launcher.HasExited) { $launcher.Kill($true) }
     }
+
+    & "$PSScriptRoot/Test-Lifecycle.ps1" -PackageRoot $extracted -EvidenceRoot $sandbox
 
     # Useful dependency error is also part of the staged product contract.
     Remove-Item "$extracted/lib/Native/Dictator.Native.dll"

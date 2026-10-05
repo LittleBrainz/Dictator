@@ -9,20 +9,29 @@ $stage = Join-Path $repo 'artifacts/Dictator'
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item "$stage/lib/Native" -ItemType Directory -Force | Out-Null
 New-Item "$stage/lib/WinUI" -ItemType Directory -Force | Out-Null
-# Preserve the complete supported publish tree beside the managed host. No runtime
-# relocation within that tree, resource rewriting, or dependency/locale pruning.
+# Keep runtime modules and neutral PRI resources intact. The current testing
+# distribution retains only the four locales explicitly requested by the user.
 Copy-Item "$publish/*" "$stage/lib/WinUI" -Recurse
 Copy-Item "$repo/artifacts/native/bin/Release/Dictator.exe" "$stage/Dictator.exe"
 Copy-Item "$repo/artifacts/native/bin/Release/Dictator.Native.dll" "$stage/lib/Native/Dictator.Native.dll"
 Copy-Item "$repo/packaging/README.txt" "$stage/README.txt"
 $runtime = Join-Path $stage 'lib/WinUI'
+$allowedLocales = @('en-GB', 'en-US', 'fr-FR', 'zh-CN')
+Get-ChildItem $runtime -Directory -Recurse | Sort-Object { $_.FullName.Length } -Descending | ForEach-Object {
+    if ($_.Name -match '^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$' -and $_.Name -notin $allowedLocales) {
+        # Identify culture names rather than deleting unrelated runtime folders.
+        try { $null = [Globalization.CultureInfo]::GetCultureInfo($_.Name) }
+        catch { return }
+        Remove-Item $_.FullName -Recurse -Force
+    }
+}
 foreach ($dependency in @('Dictator.App.exe', 'Dictator.App.runtimeconfig.json', 'System.Private.CoreLib.dll', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
     if (-not (Test-Path (Join-Path $runtime $dependency))) { throw "Required app-local runtime file is missing: $dependency" }
 }
 if (-not (Test-Path "$runtime/Dictator.App.pri") -and -not (Test-Path "$runtime/resources.pri")) {
     throw 'The managed application PRI resource is missing.'
 }
-foreach ($locale in @('en-GB', 'en-US', 'zh-CN')) {
+foreach ($locale in $allowedLocales) {
     if (-not (Test-Path (Join-Path $runtime $locale))) { throw "Required WinUI runtime locale is missing: $locale" }
 }
 Get-ChildItem $runtime -Recurse -File | ForEach-Object {

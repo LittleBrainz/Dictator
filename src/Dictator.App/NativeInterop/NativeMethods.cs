@@ -7,7 +7,8 @@ namespace Dictator.App.NativeInterop;
 
 internal enum NativeResult : uint
 {
-    Ok = 0, InvalidArgument = 1, AbiMismatch = 2, BufferTooSmall = 3, OutOfMemory = 4
+    Ok = 0, InvalidArgument = 1, AbiMismatch = 2, BufferTooSmall = 3, OutOfMemory = 4,
+    PlatformError = 5, WrongThread = 6
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
