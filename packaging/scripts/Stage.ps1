@@ -45,7 +45,7 @@ $commit = & git -C $repo rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot record the Git commit.' }
 $build = if ($env:GITHUB_RUN_NUMBER) { "$env:GITHUB_RUN_NUMBER.$env:GITHUB_RUN_ATTEMPT" } else { 'local' }
 $metadata = [ordered]@{
-    productVersion = '0.0.1'
+    productVersion = '0.1.0'
     gitCommit = $commit.Trim()
     ciBuildNumber = $build
     configuration = 'Release'

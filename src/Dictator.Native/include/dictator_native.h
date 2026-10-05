@@ -53,7 +53,8 @@ DICTATOR_API dictator_result DICTATOR_CALL dictator_create_context(
 DICTATOR_API void DICTATOR_CALL dictator_destroy_context(dictator_context* context) DICTATOR_NOEXCEPT;
 // Polling runs synchronously on the calling non-real-time consumer thread.
 // Calls for a given context must be serialized; separate contexts are independent.
-// No callbacks, worker threads, UI, audio, or I/O are started by this Phase 0 ABI.
+// These context/probe operations start no callbacks, workers, UI, audio or I/O.
+// Resident surface operations below explicitly create native UI on the caller thread.
 DICTATOR_API dictator_result DICTATOR_CALL dictator_poll(
     dictator_context* context, dictator_snapshot* snapshot) DICTATOR_NOEXCEPT;
 // UTF-16 code units, including surrogate pairs and embedded NULs, are copied verbatim.
