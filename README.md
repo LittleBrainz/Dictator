@@ -1,9 +1,9 @@
 # Dictator
 
 Windows 11 x64 voice dictation assistant, built with C# 14/.NET 10, WinUI 3, and a
-small C++23 native core. This fresh implementation currently covers **Phase 0**:
-the Settings/Diagnostics shell, versioned native ABI, tests, Windows CI, and
-self-contained distribution. Dictation features are not implemented yet.
+small C++23 native core. This fresh implementation currently covers **Phase 1**:
+a resident tray host, non-activating Widget shell, Dictator Settings, profile-based
+preferences, single-instance activation, and self-contained distribution. Dictation features are not implemented yet.
 
 Download **Dictator** from a successful Windows Actions run, extract once, and
 launch the small root `Dictator.exe` launcher. The full self-contained application
@@ -18,5 +18,8 @@ installation folder. The current build is unsigned; Windows policy may block it.
 - [Agent/build instructions](AGENTS.md)
 
 The complete hosted Windows build is `./packaging/scripts/Build.ps1`. GitHub
-Actions on `windows-2025` is authoritative. Phase 1 requires green CI and a
-successful manual launch of the staged artifact on Windows 11.
+Actions on `windows-2025` is authoritative. Phase 0 passed Windows CI and manual
+acceptance. Phase 1 still requires manual lifecycle acceptance on Windows 11.
+Normal startup shows the Widget and tray icon; use **Open Settings** from the tray
+to configure the app, and **Quit** to exit. Closing Settings leaves Dictator running.
+Only en-GB, en-US, fr-FR and zh-CN locale directories are shipped for testing.

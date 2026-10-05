@@ -76,6 +76,22 @@ try {
     Invoke-Smoke 'smoke-test' $false
     Invoke-Smoke 'ui-smoke-test' $true
 
+    # Load real WinUI XAML with each retained language and a removed-language
+    # fallback. Keep neutral PRI resources and let the SDK select its fallback.
+    foreach ($locale in @('en-GB', 'en-US', 'fr-FR', 'zh-CN', 'de-DE')) {
+        $localeReport = Join-Path $sandbox "locale-$locale.json"
+        $probe = Start-Process "$extracted/Dictator.exe" -ArgumentList @('--locale-smoke-test', $locale, "`"$localeReport`"") -PassThru
+        if (-not $probe.WaitForExit(30000)) { $probe.Kill($true); throw "Locale $locale timed out." }
+        if ($probe.ExitCode -ne 0 -or -not (Test-Path $localeReport)) { throw "WinUI locale $locale failed." }
+        $localeReady = Get-Content $localeReport -Raw | ConvertFrom-Json
+        if ($localeReady.status -ne 'ok' -or -not $localeReady.uiReady) { throw "WinUI locale $locale did not load." }
+    }
+    $allowed = @('en-GB', 'en-US', 'fr-FR', 'zh-CN')
+    $unexpected = @(Get-ChildItem "$extracted/lib/WinUI" -Directory -Recurse | Where-Object {
+        $_.Name -match '^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$' -and $_.Name -notin $allowed
+    })
+    if ($unexpected.Count) { throw "Unexpected locale directories: $($unexpected.Name -join ', ')" }
+
     # Normal launches must leave only the managed host running, not a resident helper.
     $normalReport = Join-Path $sandbox 'normal-launch.json'
     $launcher = Start-Process "$extracted/Dictator.exe" -ArgumentList @('--launch-smoke-test', "`"$normalReport`"") -WorkingDirectory $working -PassThru

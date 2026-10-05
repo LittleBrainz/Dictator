@@ -79,7 +79,7 @@ public sealed partial class MainWindow : Window
     }
     private void OnHotkeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if ((int)args.Key < 0x20 || args.Key is VirtualKey.LeftWindows or VirtualKey.RightWindows) return;
+        if ((int)args.Key < 0x20 || args.Key is VirtualKey.LeftWindows or VirtualKey.RightWindows || (int)args.Key is >= 0xA0 and <= 0xA5) return;
         static bool Down(VirtualKey key) => InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
         var modifiers = (Down(VirtualKey.Menu) ? 1 : 0) | (Down(VirtualKey.Control) ? 2 : 0) |
             (Down(VirtualKey.Shift) ? 4 : 0) | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);

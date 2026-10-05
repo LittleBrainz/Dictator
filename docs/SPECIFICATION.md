@@ -11,6 +11,13 @@
 
 ---
 
+## Accepted implementation updates
+
+Phase 0 was accepted by the user after successful Windows CI and manual launch.
+The current implementation scope is Phase 1. The testing artifact retains only
+`en-GB`, `en-US`, `fr-FR` and `zh-CN` locale directories; other locales can be
+reintroduced later. Neutral runtime resources remain intact.
+
 ## 1. Executive summary
 
 Build **Dictator**, a resident Windows 11 application that provides low-friction system-wide voice dictation.

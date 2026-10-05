@@ -12,7 +12,7 @@ public sealed record HotkeyPreference(int Modifiers = 3, int Key = 0xDC)
     public void Validate()
     {
         if (Modifiers is < 1 or > 15 || Key is < 0x20 or > 0xFE ||
-            Key is 0x5B or 0x5C || (Modifiers == 3 && Key == 0x20))
+            Key is 0x5B or 0x5C or >= 0xA0 and <= 0xA5 || (Modifiers == 3 && Key == 0x20))
             throw new InvalidDataException("Choose a Hotkey with a modifier and a non-modifier key. Ctrl+Alt+Space is reserved.");
     }
     [JsonIgnore]
@@ -57,6 +57,7 @@ public sealed class PreferencesStore(string directory)
         try
         {
             using var input = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (input.Length > 65536) throw new InvalidDataException("Settings exceed the supported size.");
             using var document = JsonDocument.Parse(input);
             if (!document.RootElement.TryGetProperty("schemaVersion", out var schema) || schema.GetInt32() != Preferences.CurrentSchema)
                 throw new InvalidDataException("Unsupported or missing settings schema.");

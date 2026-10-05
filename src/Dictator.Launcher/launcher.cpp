@@ -32,7 +32,7 @@ bool is_smoke_test() {
     auto* arguments = CommandLineToArgvW(GetCommandLineW(), &count);
     if (!arguments) throw std::runtime_error("Cannot read launcher arguments.");
     const bool result = count > 1 && (std::wstring(arguments[1]) == L"--smoke-test" ||
-        std::wstring(arguments[1]) == L"--ui-smoke-test");
+        std::wstring(arguments[1]) == L"--ui-smoke-test" || std::wstring(arguments[1]) == L"--locale-smoke-test");
     LocalFree(arguments);
     return result;
 }

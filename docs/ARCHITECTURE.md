@@ -1,13 +1,15 @@
-# Phase 0 architecture
+# Architecture through Phase 1
 
 The v2 specification is in `SPECIFICATION.md`, updated with the user's explicit
 6 October 2026 deployment and user-data requirements.
-Phase 0 implements the build and deployment chain only. There is no dictation,
-networking, microphone capture, tray, Widget, Hotkey, history, or credential store.
+Phase 0 established the build and deployment chain and passed user acceptance.
+Phase 1 adds resident lifecycle, a native tray and Widget shell, Settings and
+preferences. Dictation, audio capture, global Hotkey interaction, networking,
+history, and credentials remain future work.
 
-`Dictator.App` is an unpackaged C# 14/.NET 10 WinUI 3 executable. It opens
-**Dictator Settings** and displays Diagnostics. `Dictator.Core` contains the
-UI-independent build identity reader. `Dictator.Native` is a C++23 DLL with ABI 1.
+`Dictator.App` is an unpackaged C# 14/.NET 10 WinUI 3 executable. It creates
+**Dictator Settings** quietly and keeps the Widget and tray available until Quit.
+`Dictator.Core` contains UI-independent build identity and preferences. `Dictator.Native` is a C++23 DLL with ABI 1.
 Core and interop tests run through xUnit; native tests run through CTest.
 The interop tests compile the production interop source, without referencing WinUI.
 
@@ -58,6 +60,7 @@ lib/
     <complete app-local .NET / Windows App SDK / VC runtime and resources>
     en-GB/
     en-US/
+    fr-FR/
     zh-CN/
   Native/Dictator.Native.dll
   build-info.json
@@ -71,7 +74,10 @@ trimming and Native AOT remain disabled. GitHub's artifact ZIP is extracted once
 No application or runtime payload is extracted during application startup.
 
 The entire supported publish tree stays beside the managed host, including neutral
-PRI resources and all SDK locales. No individual SDK DLLs are moved away from the
+PRI resources and the four user-requested locales (en-GB, en-US, fr-FR, zh-CN).
+The other culture directories are removed at staging, without changing neutral
+PRI resources. Actual XAML launch checks cover all four languages and de-DE
+fallback after its locale directory has been removed. No individual SDK DLLs are moved away from the
 host, no PRI files are rewritten, and no WinUI DLL search paths are customized.
 The SDK's registration-free automatic initializer owns runtime/resource loading.
 Both .NET and Windows App SDK are self-contained. Microsoft's native modules use
@@ -110,8 +116,12 @@ database/history, logs and any sanitized crash data will live there. Installatio
 under `%LOCALAPPDATA%\Programs\Dictator` may be added later for binaries only.
 API keys still belong in Windows Credential Manager.
 
-Phase 0 reports and verifies this location; it has no settings/history persistence
-yet and does not create an empty config file or migrate nonexistent user data.
+Preferences use schema 1 in `settings.json`: Start with Windows, Theme, Hotkey
+and Widget Zoom. Writes flush a unique temporary file before atomic replacement.
+Invalid, inaccessible or future-schema files are preserved and lock preference
+changes for that session. Recovery requires repairing or moving the file and
+restarting. A fresh launch does not create a config until a preference changes.
+There is no history/database or obsolete-prototype migration yet.
 
 ## Repository and acceptance status
 
@@ -119,5 +129,38 @@ The existing connected repository is `LittleBrainz/Dictator`; it was public at
 bootstrap. No repository was recreated and its visibility was not changed.
 The specification's private-repository requirement remains an external setup
 decision. Source changes alone cannot establish clean-PC compatibility or trust
-under Smart App Control. The build remains unsigned. Phase 1 stays gated on both
-green authoritative CI and the user's manual Windows 11 launch.
+under Smart App Control. The build remains unsigned. Phase 0 passed authoritative CI and the user confirmed its manual Windows 11
+launch. Phase 1 requires the lifecycle acceptance matrix in TESTING.md.
+
+## Resident lifecycle
+
+C# owns settings, startup registration and lifecycle decisions. A per-user/session
+named mutex establishes the resident instance; a current-user-only named pipe
+redirects activation. A second manual launch opens existing Settings. `--startup`
+and `--restart` leave it quiet. Requests and connections have bounded deadlines;
+no network service or elevated helper is involved. Mutex ownership stays on the
+main STA thread. The pipe is cancelled and mutex released before restart launches
+the same absolute root executable.
+
+The additive ABI 1 `dictator_host` owns a hidden native tray owner HWND, branded
+tray icon and non-activating Widget HWND. Calls and destruction run on the WinUI
+UI thread; messages use its existing pump. A small event bitset is polled every
+50 ms, without managed callbacks. Tray menu: Open Widget (default), Open Settings,
+separator, Restart Dictator, Quit. Left click opens the Widget. The icon is restored
+on Explorer's TaskbarCreated message. The Widget shell shows Idle, opens Settings
+with its gear, and dismisses with its close control. No input gesture, audio or
+dictation implementation is included.
+
+Settings is constructed without activation. Its close request is cancelled and
+the AppWindow hidden. Quit stops polling, removes the tray icon, destroys native
+HWNDs and drawing resources, then uses Application.Exit rather than depending on
+Closed for a never-activated WinUI window. This is verified from the actual package.
+Windows startup uses HKCU Run with a quoted absolute launcher path and --startup;
+changes roll back OS registration if preference persistence fails. The UI displays
+the actual registration, including external changes.
+
+Internal smoke flags bypass or isolate residence. Lifecycle smoke uses an explicit
+scratch data root and a separate startup registry value, restores that value, and
+never writes the runner's real .dictator settings. Product launches always resolve
+the known profile path. Internal pipe commands for testing are accepted only by
+a resident instance launched with that test flag.
