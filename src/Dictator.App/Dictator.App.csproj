@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platform>x64</Platform>
+    <VCRTForwarders-IncludeDebugCRT>false</VCRTForwarders-IncludeDebugCRT>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKBootstrapInitialize>false</WindowsAppSDKBootstrapInitialize>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+    <SelfContained>true</SelfContained>
+    <ExpectedDotnetRuntimeVersion>10.0.12</ExpectedDotnetRuntimeVersion>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>Dictator.App</AssemblyName>
+    <Product>Dictator</Product>
+    <Title>Dictator</Title>
+    <RootNamespace>Dictator.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Dictator.Core/Dictator.Core.csproj" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.VCRTForwarders.140" />
+    <!-- App-local VC runtime for Microsoft's runtime components. Our own DLL uses /MT. -->
+    <Content Include="$(BundledVCRuntimeDir)/*.dll" Condition="'$(BundledVCRuntimeDir)' != ''">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <Target Name="RequireAppLocalCRTForPublish" BeforeTargets="Publish">
+    <Error Condition="'$(BundledVCRuntimeDir)' == '' Or !Exists('$(BundledVCRuntimeDir)/vcruntime140.dll')"
+           Text="Set BundledVCRuntimeDir to the hosted MSVC x64 redistributable directory. Use packaging/scripts/Build.ps1." />
+  </Target>
+</Project>

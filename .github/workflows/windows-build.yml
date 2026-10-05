@@ -1,0 +1,52 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      NUGET_XMLDOC_MODE: skip
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Build, test, publish, stage, and verify the actual package
+        shell: pwsh
+        run: ./packaging/scripts/Build.ps1
+      - name: Upload test and packaging evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: Phase0-test-results
+          path: |
+            artifacts/test-results/
+            artifacts/publish-manifest.txt
+            artifacts/package smoke with spaces*/*.json
+          if-no-files-found: ignore
+          retention-days: 5
+      - name: Upload one-extraction application
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: Dictator
+          path: artifacts/Dictator/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6

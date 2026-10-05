@@ -55,3 +55,11 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Native/Cloud scratch and generated tooling
+build/
+work/
+.vs/
+.idea/
+*.user
+*.suo

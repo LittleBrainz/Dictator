@@ -1,0 +1,8 @@
+add_executable(Dictator.Native.Tests native_tests.cpp)
+target_link_libraries(Dictator.Native.Tests PRIVATE Dictator.Native)
+if(MSVC)
+  target_compile_options(Dictator.Native.Tests PRIVATE /W4 /WX /permissive- /utf-8)
+else()
+  target_compile_options(Dictator.Native.Tests PRIVATE -Wall -Wextra -Werror -pedantic)
+endif()
+add_test(NAME native_contract COMMAND Dictator.Native.Tests)
