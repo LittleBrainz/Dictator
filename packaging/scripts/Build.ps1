@@ -14,10 +14,15 @@ function Invoke-Checked([scriptblock] $Command) {
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (-not $visualStudio) { throw 'Hosted MSVC x64 tools were not found.' }
-$redistVersion = Get-ChildItem (Join-Path $visualStudio 'VC/Redist/MSVC') -Directory |
-    Where-Object Name -Match '^\d+\.\d+\.\d+$' | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-$crt = Join-Path $redistVersion.FullName 'x64/Microsoft.VC143.CRT'
-if (-not (Test-Path "$crt/vcruntime140.dll")) { throw 'The app-local VC redistributable is missing.' }
+$redistVersions = Get-ChildItem (Join-Path $visualStudio 'VC/Redist/MSVC') -Directory |
+    Where-Object Name -Match '^\d+\.\d+\.\d+$' | Sort-Object { [version]$_.Name } -Descending
+$crtDirectory = $redistVersions | ForEach-Object {
+    Get-ChildItem (Join-Path $_.FullName 'x64') -Directory -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path (Join-Path $_.FullName 'vcruntime140.dll') }
+} | Select-Object -First 1
+if (-not $crtDirectory) { throw 'The app-local VC redistributable is missing.' }
+$crt = $crtDirectory.FullName
+Write-Host "Bundling the hosted x64 VC runtime from $crt"
 $sdkVersion = Get-ChildItem (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/Include') -Directory |
     Where-Object Name -Match '^10\.0\.\d+\.0$' | Sort-Object { [version]$_.Name } -Descending |
     Select-Object -First 1 -ExpandProperty Name
