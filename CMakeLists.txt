@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.28)
+project(Dictator VERSION 0.0.1 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+# Dictator's DLL must not require a separately installed VC runtime.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<CONFIG>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<CONFIG>")
+include(CTest)
+add_subdirectory(src/Dictator.Native)
+if(BUILD_TESTING)
+  add_subdirectory(tests/Dictator.Native.Tests)
+endif()
