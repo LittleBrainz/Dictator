@@ -29,7 +29,7 @@ From a hosted Windows runner with the pinned SDK selected:
 
 ```powershell
 dotnet restore Dictator.sln --locked-mode
-cmake -S . -B artifacts/native -G "Visual Studio 17 2022" -A x64
+cmake -S . -B artifacts/native -G "Visual Studio 18 2026" -A x64
 cmake --build artifacts/native --config Release --parallel 2
 ctest --test-dir artifacts/native -C Release --output-on-failure
 dotnet test tests/Dictator.Core.Tests -c Release --no-restore

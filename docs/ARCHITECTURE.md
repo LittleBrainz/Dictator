@@ -14,11 +14,14 @@ The interop tests compile the production interop source, without referencing Win
 
 On 5 October 2026, the Microsoft .NET 10 release metadata reported SDK **10.0.401**
 and runtime **10.0.12**. NuGet's Microsoft.WindowsAppSDK stable package is **2.5.1**.
-The current `windows-2025` image manifest lists Windows SDK **10.0.26100.0** and
-Visual Studio 2022 **17.14**. The specification's 28000-series download is not on
-that hosted image. We use the latest stable SDK actually installed on the runner,
-record its version, and target the available 26100 API contracts with a Windows 11
-22000 minimum. No Preview/RC toolchain or SDK installer is required on the user's PC.
+The published `windows-2025` image manifest listed Windows SDK **10.0.26100.0** and
+Visual Studio 2022 **17.14**, but the actual Actions runner already has stable
+**Visual Studio 2026 (18.x)** and VC145. The build discovers the installed stable
+Visual Studio instance, its matching CMake generator/redistributable, and the latest
+installed stable Windows SDK; the actual selected SDK is recorded in metadata.
+The managed project targets the 26100 API contracts with a Windows 11 22000 minimum.
+No Preview/RC toolchain or SDK installer is required on the user's PC. The observed
+runner, rather than an outdated image manifest, is the build authority.
 
 Sources:
 
