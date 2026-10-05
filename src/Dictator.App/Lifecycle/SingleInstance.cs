@@ -14,13 +14,16 @@ internal sealed class SingleInstance : IDisposable
     private readonly CancellationTokenSource stopping = new();
     private Task? listener;
     internal bool IsOwner { get; }
-    internal SingleInstance(string dataRoot)
+    internal SingleInstance(string dataRoot, bool claimOwnership = true)
     {
         var identity = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("User identity unavailable.");
         var scope = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity + "|" +
             System.Diagnostics.Process.GetCurrentProcess().SessionId + "|" + Path.GetFullPath(dataRoot).ToUpperInvariant())));
         pipeName = "Dictator-" + scope;
         mutex = new Mutex(false, "Local\\" + pipeName);
+        // Test control clients never claim residence during the brief restart gap.
+        // They wait for the new server, rather than competing with its launch.
+        if (!claimOwnership) return;
         try { IsOwner = mutex.WaitOne(0); }
         catch (AbandonedMutexException) { IsOwner = true; }
     }

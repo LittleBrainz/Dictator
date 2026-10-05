@@ -14,7 +14,7 @@ int main() {
     CHECK(dictator_host_create(1, nullptr) == DICTATOR_INVALID_ARGUMENT);
     dictator_host* host = nullptr;
     CHECK(dictator_host_create(2, &host) == DICTATOR_ABI_MISMATCH && host == nullptr);
-    const auto before = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
+    DWORD warm = 0;
     for (int cycle = 0; cycle < 10; ++cycle) {
         CHECK(dictator_host_create(1, &host) == DICTATOR_OK);
         CHECK(dictator_host_tray_ready(host) == 1);
@@ -39,7 +39,12 @@ int main() {
         CHECK(dictator_host_poll_events(host) == 0);
         dictator_host_destroy(host);
         CHECK(!IsWindow(widget) && !IsWindow(owner));
+        const auto remaining = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
+        std::cout << "GDI objects after resident cycle " << cycle << ": " << remaining << '\n';
+        // Drawing the first icon loads process-wide font/GDI caches. Subsequent
+        // create/destroy cycles must not accumulate any additional GDI objects.
+        if (cycle == 0) warm = remaining;
+        else CHECK(remaining <= warm);
     }
-    CHECK(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) <= before + 2);
     std::cout << "Resident native ownership, tray event, non-activation and UI-thread contract passed.\n";
 }

@@ -42,6 +42,27 @@ public sealed class PreferencesTests : IDisposable
         Assert.Equal(text, File.ReadAllText(store.FilePath));
     }
     [Fact]
+    public void InaccessibleSettingsEntryBlocksWritesWithoutDeletingIt()
+    {
+        var store = new PreferencesStore(directory);
+        Directory.CreateDirectory(store.FilePath);
+        store.Load();
+        Assert.NotNull(store.Error);
+        Assert.Throws<InvalidOperationException>(() => store.Save(new()));
+        Assert.True(Directory.Exists(store.FilePath));
+    }
+    [Fact]
+    public void ExcessiveSettingsFileIsPreserved()
+    {
+        Directory.CreateDirectory(directory);
+        var store = new PreferencesStore(directory);
+        var text = new string(' ', 65537);
+        File.WriteAllText(store.FilePath, text);
+        store.Load();
+        Assert.NotNull(store.Error);
+        Assert.Equal(text, File.ReadAllText(store.FilePath));
+    }
+    [Fact]
     public void ReservedHotkeyAndInvalidZoomCannotReplaceGoodFile()
     {
         var store = new PreferencesStore(directory);

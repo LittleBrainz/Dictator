@@ -24,7 +24,8 @@ internal static partial class Program
                 throw new PlatformNotSupportedException("Dictator requires Windows 11 x64.");
             var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path is unavailable.");
             var root = AppPaths.DistributionRootFromHost(executable);
-            using (var instance = options.IsProbe ? null : new SingleInstance(options.TestDataRoot ?? AppPaths.UserDataRoot))
+            using (var instance = options.IsProbe ? null : new SingleInstance(options.TestDataRoot ?? AppPaths.UserDataRoot,
+                claimOwnership: !options.IsTest || options.Command is "launch" or "startup"))
             {
                 if (instance is { IsOwner: false })
                 {
