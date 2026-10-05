@@ -15,8 +15,8 @@ internal static partial class Program
         try
         {
             if (args.Length != 0 && (args.Length != 2 ||
-                args[0] is not ("--smoke-test" or "--ui-smoke-test")))
-                throw new ArgumentException("Usage: Dictator.exe [--smoke-test|--ui-smoke-test <absolute-result-path>]");
+                args[0] is not ("--smoke-test" or "--ui-smoke-test" or "--launch-smoke-test")))
+                throw new ArgumentException("Usage: Dictator.exe [--smoke-test|--ui-smoke-test|--launch-smoke-test <absolute-result-path>]");
             if (args.Length == 2)
             {
                 if (!Path.IsPathFullyQualified(args[1]))
@@ -39,7 +39,7 @@ internal static partial class Program
             {
                 SynchronizationContext.SetSynchronizationContext(
                     new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-                _ = new App(report, smokeOutput);
+                _ = new App(report, smokeOutput, exitAfterReport: args.Length == 2 && args[0] == "--ui-smoke-test");
             });
             return 0;
         }

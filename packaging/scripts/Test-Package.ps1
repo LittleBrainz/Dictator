@@ -77,7 +77,8 @@ try {
     Invoke-Smoke 'ui-smoke-test' $true
 
     # Normal launches must leave only the managed host running, not a resident helper.
-    $launcher = Start-Process "$extracted/Dictator.exe" -WorkingDirectory $working -PassThru
+    $normalReport = Join-Path $sandbox 'normal-launch.json'
+    $launcher = Start-Process "$extracted/Dictator.exe" -ArgumentList @('--launch-smoke-test', "`"$normalReport`"") -WorkingDirectory $working -PassThru
     $hostProcess = $null
     try {
         if (-not $launcher.WaitForExit(10000) -or $launcher.ExitCode -ne 0) { throw 'The normal launcher did not exit promptly.' }
@@ -85,16 +86,22 @@ try {
             Where-Object { $_.ExecutablePath -eq [IO.Path]::GetFullPath((Join-Path $extracted 'lib/WinUI/Dictator.App.exe')) })
         if ($children.Count -ne 1) { throw 'Normal launch did not leave exactly one managed application process.' }
         $hostProcess = [Diagnostics.Process]::GetProcessById($children[0].ProcessId)
+        # Keep a process handle before closing the window so Windows can still return
+        # its real exit code even if it terminates before WaitForExit is called.
+        $null = $hostProcess.Handle
         $deadline = [Diagnostics.Stopwatch]::StartNew()
         do {
             $hostProcess.Refresh()
-            if ($hostProcess.MainWindowHandle -ne 0) { break }
+            if ((Test-Path $normalReport) -and $hostProcess.MainWindowHandle -ne 0) { break }
             Start-Sleep -Milliseconds 100
         } while (-not $hostProcess.HasExited -and $deadline.Elapsed.TotalSeconds -lt 15)
+        if (-not (Test-Path $normalReport)) { throw 'The normally launched WinUI application did not report startup completion.' }
+        $ready = Get-Content $normalReport -Raw | ConvertFrom-Json
+        if ($ready.status -ne 'ok' -or -not $ready.uiReady) { throw "Normal launch failed: $(Get-Content $normalReport -Raw)" }
         if ($hostProcess.MainWindowHandle -eq 0 -or -not $hostProcess.CloseMainWindow() -or -not $hostProcess.WaitForExit(30000)) {
             throw 'Normal Settings window launch/close verification failed.'
         }
-        if ($hostProcess.ExitCode -ne 0) { throw 'The normal application exited with an error.' }
+        if ($hostProcess.ExitCode -ne 0) { throw "The normal application exited with code $($hostProcess.ExitCode)." }
         Write-Host 'Normal root launcher exits promptly; its one managed host opens and closes successfully.'
     }
     finally {

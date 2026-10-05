@@ -65,8 +65,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int) {
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION process{};
         if (!CreateProcessW(host.c_str(), command.data(), nullptr, nullptr, FALSE, 0,
-                nullptr, nullptr, &startup, &process))
-            return report_error(L"Windows could not launch " + host.wstring() + L":\n" + windows_error(GetLastError()), headless);
+                nullptr, nullptr, &startup, &process)) {
+            const auto error = GetLastError();
+            return report_error(L"Windows could not launch " + host.wstring() + L":\n" + windows_error(error), headless);
+        }
         CloseHandle(process.hThread);
 
         // Normal launches leave only the managed application running. The launcher

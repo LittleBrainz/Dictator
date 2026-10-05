@@ -25,6 +25,8 @@ from a different working directory, with a forbidden runtime-extraction destinat
 - a headless `--smoke-test` returning a machine-readable result;
 - a `--ui-smoke-test` that creates the actual WinUI Settings window, loads its XAML,
   writes the result, closes, and exits;
+- `--launch-smoke-test` uses the normal detached launcher path, reports XAML-loaded
+  readiness without closing, and lets CI close the window only after startup finishes;
 - a missing native DLL returning a useful error and nonzero exit;
 - a missing managed host returning a nonzero launcher exit without a modal dialog.
 

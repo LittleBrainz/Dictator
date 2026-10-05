@@ -7,12 +7,14 @@ public partial class App : Application
 {
     private readonly StartupReport report;
     private readonly string? smokeOutput;
+    private readonly bool exitAfterReport;
     private Window? window;
 
-    internal App(StartupReport report, string? smokeOutput)
+    internal App(StartupReport report, string? smokeOutput, bool exitAfterReport)
     {
         this.report = report;
         this.smokeOutput = smokeOutput;
+        this.exitAfterReport = exitAfterReport;
         InitializeComponent();
         UnhandledException += (_, args) =>
         {
@@ -25,6 +27,8 @@ public partial class App : Application
     {
         var settings = new Views.MainWindow(report);
         window = settings;
+        // Phase 0 has one window and no tray residence. Make normal shutdown explicit.
+        settings.Closed += (_, _) => Exit();
         if (smokeOutput is not null)
         {
             settings.DiagnosticsContent.Loaded += (_, _) =>
@@ -32,8 +36,7 @@ public partial class App : Application
                 if (!settings.DispatcherQueue.TryEnqueue(() =>
                 {
                     report.Write(smokeOutput, uiReady: true);
-                    settings.Close();
-                    Exit();
+                    if (exitAfterReport) settings.Close();
                 })) throw new InvalidOperationException("Could not complete the UI smoke test.");
             };
         }
