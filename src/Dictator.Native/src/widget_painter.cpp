@@ -81,7 +81,7 @@ void draw_text(Graphics& g, const wchar_t* text, int count, REAL x, Color color)
     Font font(L"Segoe UI", text_font_size, FontStyleRegular, UnitPixel);
     StringFormat format(StringFormat::GenericTypographic());
     format.SetFormatFlags(StringFormatFlagsNoWrap | StringFormatFlagsMeasureTrailingSpaces);
-    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 5.4f), &format, &ink);
+    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 4.5f), &format, &ink);
 }
 }
 HRGN window_region(int client_width, int client_height) noexcept {
@@ -127,7 +127,7 @@ void paint(HDC destination, int client_width, int client_height,
     g.ScaleTransform(static_cast<REAL>(client_width) / width, static_cast<REAL>(client_height) / height);
     capsule(g, 0, text_height, true);
     const auto controls = g.Save();
-    g.TranslateTransform(0, -2); // Preserve control sizes; halve only the inter-panel gap.
+    g.TranslateTransform(0, static_cast<REAL>(controls_top - 28)); // Keep the control artwork at its original size.
     capsule(g, 28, 37, false);
     const bool active = talking && eligible;
     const Color mic_color = active ? Color(255, 25, 255, 123) : Color(255, 255, 57, 77);
@@ -181,7 +181,7 @@ void paint(HDC destination, int client_width, int client_height,
                 draw_text(g, part.text.data(), static_cast<int>(part.text.size()), x, Color(255, 249, 253, 255)); x += part.width;
             }
         } else if (hint && hint_alpha > 0) {
-            const Color ink(static_cast<BYTE>(std::clamp(hint_alpha, 0.f, 1.f) * 255), 67, 179, 255);
+            const Color ink(static_cast<BYTE>(std::clamp(hint_alpha, 0.f, 1.f) * 255), 255, 255, 0);
             draw_text(g, hint, -1, hint_x, ink);
             if (hint_period > 0) {
                 draw_text(g, hint_separator, -1, hint_x + hint_width, ink);

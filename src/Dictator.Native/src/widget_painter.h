@@ -4,8 +4,8 @@
 
 // Two separate capsules, with an excluded desktop-visible gap between them.
 namespace widget_design {
-constexpr int width = 270, height = 63, text_height = 24, controls_top = 26;
-constexpr float text_font_size = 9.8f; // 70% of the previous 14 DIP caption.
+constexpr int width = 270, height = 62, text_height = 24, controls_top = 25;
+constexpr float text_font_size = 11.f;
 HRGN window_region(int client_width, int client_height) noexcept;
 int hit_test(int client_width, int client_height, int x, int y) noexcept;
 float measure_text(const wchar_t* text, int count) noexcept;
