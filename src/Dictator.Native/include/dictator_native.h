@@ -96,6 +96,17 @@ DICTATOR_API uint32_t DICTATOR_CALL dictator_host_input(
     dictator_host* host, dictator_input* output) DICTATOR_NOEXCEPT;
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_preview(
     dictator_host* host, uint64_t target) DICTATOR_NOEXCEPT;
+// UI-thread raw text presentation bridge, for the future transcription provider.
+// Snapshot the current presentation session at start; 0 means inactive/wrong thread.
+// An old session is rejected even if Talking restarts in the same target field.
+DICTATOR_API uint64_t DICTATOR_CALL dictator_host_live_text_session(dictator_host* host) DICTATOR_NOEXCEPT;
+// Append UTF-16 deltas only to the currently Talking target/session. The input is borrowed
+// for this call and copied. Max 2048 units per delta, 4096 queued units/128 deltas.
+// Invalid/stale/inactive targets return INVALID_ARGUMENT. A full queue returns
+// BUFFER_TOO_SMALL without accepting the delta. Stop/focus loss/close clears it.
+// This function captures, formats, inserts and persists nothing.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_append_live_text(
+    dictator_host* host, uint64_t target, uint64_t session, const uint16_t* input, uint32_t count) DICTATOR_NOEXCEPT;
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_create(
     uint32_t requested_abi, dictator_host** out_host) DICTATOR_NOEXCEPT;
 DICTATOR_API void DICTATOR_CALL dictator_host_destroy(dictator_host* host) DICTATOR_NOEXCEPT;
