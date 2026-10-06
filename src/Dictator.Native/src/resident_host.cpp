@@ -89,12 +89,14 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
             SetMenuDefaultItem(menu, 1, FALSE);
             POINT point{static_cast<short>(LOWORD(wp)), static_cast<short>(HIWORD(wp))};
             if (point.x == -1 && point.y == -1) GetCursorPos(&point);
+            const auto foreground = GetForegroundWindow();
             SetForegroundWindow(hwnd);
             const auto command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON,
                 point.x, point.y, 0, hwnd, nullptr);
             h->events |= command;
             DestroyMenu(menu);
             PostMessageW(hwnd, WM_NULL, 0, 0);
+            if (command != 2 && foreground && IsWindow(foreground)) SetForegroundWindow(foreground);
             return 0;
         }
     }

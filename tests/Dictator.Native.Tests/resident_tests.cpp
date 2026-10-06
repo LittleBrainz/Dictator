@@ -10,6 +10,15 @@
   std::cerr << "Failed at line " << __LINE__ << ": " #expression << '\n'; return 1; \
 } } while (false)
 
+void pump() {
+    MSG message{};
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    GdiFlush();
+}
+
 int main() {
     CHECK(dictator_host_create(1, nullptr) == DICTATOR_INVALID_ARGUMENT);
     dictator_host* host = nullptr;
@@ -24,6 +33,7 @@ int main() {
         const auto foreground = GetForegroundWindow();
         CHECK(dictator_host_set_widget(host, 1, 1.0, 0) == DICTATOR_OK);
         CHECK(IsWindowVisible(widget) && GetForegroundWindow() == foreground);
+        pump(); // Exercise real WM_PAINT and the caller-owned UI message pump.
         CHECK(SendMessageW(widget, WM_MOUSEACTIVATE, 0, 0) == MA_NOACTIVATE);
         CHECK(dictator_host_set_widget(host, 1, 0.5, 0) == DICTATOR_INVALID_ARGUMENT);
         dictator_result worker_result = DICTATOR_OK;
@@ -38,6 +48,7 @@ int main() {
         CHECK(dictator_host_poll_events(host) == 1);
         CHECK(dictator_host_poll_events(host) == 0);
         dictator_host_destroy(host);
+        pump(); // Flush batched drawing/deletion before measuring ownership.
         CHECK(!IsWindow(widget) && !IsWindow(owner));
         const auto remaining = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
         std::cout << "GDI objects after resident cycle " << cycle << ": " << remaining << '\n';
