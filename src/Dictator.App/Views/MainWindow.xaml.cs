@@ -25,7 +25,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Title = "Dictator Settings";
         AppWindow.Resize(new SizeInt32(960, 740));
-        AppWindow.Closing += (_, args) => { if (!owner.IsProbe) { args.Cancel = true; AppWindow.Hide(); } };
+        AppWindow.Closing += (_, args) => { if (!owner.IsProbe && !owner.IsStopping) { args.Cancel = true; AppWindow.Hide(); } };
         Navigation.SelectedItem = Navigation.MenuItems[0];
         RefreshPreferences();
     }
@@ -50,8 +50,11 @@ public sealed partial class MainWindow : Window
         Navigation.RequestedTheme = DiagnosticsRoot.RequestedTheme;
         SettingsError.IsOpen = owner.SettingsError is not null;
         SettingsError.Message = owner.SettingsError ?? "";
-        GeneralPage.IsEnabled = owner.Store.Error is null;
-        WidgetPage.IsEnabled = owner.Store.Error is null;
+        StartupSwitch.IsEnabled = owner.Store.Error is null;
+        ThemeChoice.IsEnabled = owner.Store.Error is null;
+        HotkeyBox.IsEnabled = owner.Store.Error is null;
+        ResetHotkeyButton.IsEnabled = owner.Store.Error is null;
+        ZoomChoice.IsEnabled = owner.Store.Error is null;
         updating = false;
     }
     private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)

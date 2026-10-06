@@ -23,6 +23,7 @@ public partial class App : Application
     private double? settingsActivationMs;
     internal bool RestartRequested { get; private set; }
     internal bool IsProbe => options.IsProbe;
+    internal bool IsStopping => stopping;
     internal TaskCompletionSource<bool> ResidentReady { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal PreferencesStore Store { get; }
     internal Preferences Preferences { get; private set; } = new();

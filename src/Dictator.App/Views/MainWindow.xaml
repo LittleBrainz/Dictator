@@ -31,7 +31,7 @@
             <TextBox x:Name="HotkeyBox" Header="Hotkey" IsReadOnly="True" KeyDown="OnHotkeyDown" />
             <TextBlock Text="Select the field and press a key combination to save it. Hotkey interaction arrives with the Widget preview."
                        TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <Button Content="Restore Ctrl+Alt+\" Click="OnResetHotkey" />
+            <Button x:Name="ResetHotkeyButton" Content="Restore Ctrl+Alt+\" Click="OnResetHotkey" />
           </StackPanel>
         </StackPanel>
         <StackPanel x:Name="WidgetPage" Visibility="Collapsed" Spacing="12">
