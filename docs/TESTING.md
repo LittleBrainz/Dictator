@@ -27,7 +27,8 @@ profile and a separate reversible startup registry value. It verifies:
 - the real WM_CLOSE message hides Settings and preserves the Widget/tray/process;
 - dismissing the Widget and reopening it preserves foreground focus;
 - all preference fields persist, and Start with Windows writes/removes the quoted
-  launcher command under HKCU Run without elevation;
+  launcher command under HKCU Run without elevation, and restores a previous
+  registration and settings after a real file-sharing write failure;
 - Restart exits the old process, creates a new one, restores preferences and leaves
   Settings hidden with Widget visible;
 - future-schema settings errors are surfaced and the file is preserved even when

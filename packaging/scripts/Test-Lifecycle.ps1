@@ -82,6 +82,19 @@ try {
     if (-not $enabled.startupEnabled -or $registered -ne "`"$launcher`" --startup") { throw 'Per-user startup registration is invalid.' }
     $disabled = Request 'startup-off'
     if ($disabled.startupEnabled -or (Get-ItemPropertyValue $run $valueName -ErrorAction SilentlyContinue)) { throw 'Per-user startup registration was not removed.' }
+    # A real file-sharing failure must leave both settings and an existing startup
+    # command intact, including a registration pointing at an older artifact path.
+    $oldCommand = '"C:\previous installation\Dictator.exe" --startup'
+    Set-ItemProperty $run $valueName $oldCommand
+    $settingsFile = Join-Path $data 'settings.json'
+    $beforeSettings = Get-Content $settingsFile -Raw
+    $locked = [IO.File]::Open($settingsFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try { $failure = Request 'startup-on' }
+    finally { $locked.Dispose() }
+    if (-not $failure.settingsError -or (Get-ItemPropertyValue $run $valueName) -ne $oldCommand -or
+        (Get-Content $settingsFile -Raw) -ne $beforeSettings) { throw 'Startup rollback lost the previous registration or settings.' }
+    Remove-ItemProperty $run $valueName
+    $null = Request 'set-preferences'
     $oldPid = $fresh.processId
     $null = Request 'restart'
     Assert-CleanExit

@@ -113,11 +113,14 @@ public partial class App : Application
     }
     internal void ChangeStartup(bool enabled)
     {
-        var before = Startup.Enabled;
+        WindowsStartup.Registration? before = null;
+        var changed = false;
         try
         {
             if (Store.Error is not null) throw new InvalidOperationException(Store.Error);
+            before = Startup.Capture();
             Startup.Set(enabled);
+            changed = true;
             // Commit settings only after the OS registration succeeds; roll back the
             // registration on persistence failure so both remain consistent.
             var candidate = Preferences with { StartWithWindows = enabled };
@@ -127,7 +130,8 @@ public partial class App : Application
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.Security.SecurityException)
         {
-            try { Startup.Set(before); } catch (Exception rollback) when (rollback is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+            if (changed && before is not null)
+                try { Startup.Restore(before); } catch (Exception rollback) when (rollback is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
             SettingsError = Store.Error ?? "Start with Windows could not be changed. " + error.GetType().Name;
         }
         settings?.RefreshPreferences();
