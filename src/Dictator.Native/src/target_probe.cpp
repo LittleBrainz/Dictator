@@ -1,8 +1,10 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "target_probe.h"
-#include <UIAutomation.h>
+#include <objbase.h>
+#include <oleauto.h>
 #include <wrl/client.h>
+#include <UIAutomation.h>
 #include <chrono>
 #include <string>
 #include <iterator>
