@@ -34,6 +34,8 @@ constexpr wchar_t owner_class[] = L"Dictator.Resident.1";
 constexpr wchar_t widget_class[] = L"Dictator.Widget.1";
 constexpr wchar_t tooltip_class[] = L"Dictator.Tooltip.2";
 thread_local dictator_host* input_host{};
+static_assert(sizeof(dictator_target) == 40);
+static_assert(sizeof(dictator_input) == 24);
 bool correct_thread(dictator_host* h) noexcept { return h && h->thread == GetCurrentThreadId(); }
 void hide_tooltip(dictator_host* h) noexcept { ShowWindow(h->tooltip, SW_HIDE); }
 void close_widget(dictator_host* h) noexcept {
@@ -468,10 +470,13 @@ uint32_t DICTATOR_CALL dictator_host_input(dictator_host* h, dictator_input* out
 dictator_result DICTATOR_CALL dictator_host_preview(dictator_host* h, uint64_t target) noexcept {
     if (!correct_thread(h)) return h ? DICTATOR_WRONG_THREAD : DICTATOR_INVALID_ARGUMENT;
     refresh_target(h);
+    const bool before = h->talking;
     h->talking = target && h->current.eligible && target == h->current.token;
     h->target = h->talking ? target : 0;
-    InvalidateRect(h->widget, nullptr, FALSE);
-    if (IsWindowVisible(h->tooltip)) show_tooltip(h);
+    if (before != h->talking) {
+        InvalidateRect(h->widget, nullptr, FALSE);
+        if (IsWindowVisible(h->tooltip)) show_tooltip(h);
+    }
     return DICTATOR_OK;
 }
 uintptr_t DICTATOR_CALL dictator_host_widget_handle(dictator_host* h) noexcept {

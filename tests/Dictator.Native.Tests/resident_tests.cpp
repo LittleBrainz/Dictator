@@ -42,6 +42,7 @@ int main() {
         CHECK(worker_result == DICTATOR_WRONG_THREAD && IsWindowVisible(widget));
         SendMessageW(widget, WM_CLOSE, 0, 0);
         CHECK(!IsWindowVisible(widget));
+        CHECK(dictator_host_poll_events(host) == 32); // Explicit preview cancellation.
         const auto owner = GetWindow(widget, GW_OWNER);
         CHECK(owner && IsWindow(owner));
         SendMessageW(owner, WM_APP + 17, 0, MAKELPARAM(NIN_SELECT, 1));

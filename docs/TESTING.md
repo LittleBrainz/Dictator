@@ -1,4 +1,4 @@
-# Verification through Phase 1
+# Verification through Phase 2
 
 Phase 0 passed Windows CI and the user accepted the revised app-local artifact.
 Phase 1 adds the following automated and manual lifecycle checks.
@@ -41,13 +41,13 @@ Core tests also check malformed/unsupported settings, reserved Hotkeys, defaults
 atomic replacement and no temporary-file residue. ABI tests cover error codes,
 10,000 ownership cycles, Unicode/embedded NUL, and cross-thread consumer polling.
 
-The `Phase1-test-results` artifact contains TRX and JSON evidence. The `Dictator v<version>`
+The `Phase2-test-results` artifact contains TRX and JSON evidence. The `Dictator v<version>`
 artifact contains the application tree only, without a nested ZIP. CI checks do
 not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.1.0** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.2.0** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -56,7 +56,7 @@ not replace manual acceptance on the user's Windows desktop.
    separator, **Restart Dictator**, **Quit**. Check the Widget gear opens Settings
    and its close control only dismisses the Widget.
 4. With a text editor focused, reopen a dismissed Widget from the tray. Confirm
-   the editor retains keyboard focus. Full interaction and dictation are Phase 2.
+   the editor retains keyboard focus. Phase 2 adds interaction; real dictation comes later.
 5. Open Settings. Confirm the exact title **Dictator Settings** and navigation:
    General, Widget, Speech, AI / Models, Dictionary, Phrase Shortcuts, History,
    Applications, Diagnostics. Close Settings: Widget and tray must stay available.
@@ -66,7 +66,7 @@ not replace manual acceptance on the user's Windows desktop.
 7. Change Theme through System, Light and Dark, Hotkey through a valid combination,
    and Widget Zoom through all five stops. Confirm only one Hotkey is configured;
    Ctrl+Alt+Space is rejected, and default is Ctrl+Alt+backslash. Hotkey activation
-   is intentionally not registered until Phase 2.
+   is now registered, and conflicts must be surfaced without losing the old binding.
 8. Enable Start with Windows. Confirm HKCU Run contains a quoted root launcher path
    plus `--startup`; disable it and confirm removal, without elevation. If testing
    sign-in, enable again and confirm Widget/tray startup with Settings hidden.
@@ -89,3 +89,55 @@ not replace manual acceptance on the user's Windows desktop.
 Core and portable native/interop tests run on Linux with the pinned .NET SDK and
 C++23 compiler. They are contract coverage, never a substitute for Windows package
 validation. No microphone or live provider session is used in normal CI.
+
+## Phase 2 automated interaction coverage
+
+Core tests cover the exact 499/500/501 ms boundary for both sources, already-on
+release, repeated press, mixed input sources and invalid/changed target cancellation.
+`Dictator.Interaction.Tests` launches a separate Win32 target process and exercises
+real SendInput with writable, read-only, disabled and non-text controls. It checks
+UK/US backslash, repeat suppression, releasing modifiers before the main key,
+reservation conflicts, Escape and unrelated-key delivery, recovery without a valid
+cursor, source-specific microphone edges, drag/zoom/close/reopen, unchanged target
+text/selection and foreground focus. Target text reads are confined to the test
+fixture's own verification, never the production eligibility implementation.
+
+`Test-Preview.ps1` runs the extracted WinUI package and actual default global Hotkey
+against that fixture. IPC snapshots verify tap toggle, hold release, eligibility
+loss, no-cursor suppression/recovery and clean Quit. JSON evidence is saved beside
+the lifecycle evidence. The fixture executable is not shipped to users.
+
+## Phase 2 manual Windows 11 acceptance
+
+1. Focus Notepad and a browser text field. Tap the default Hotkey: green microphone
+   and simulated waveform start on press and remain active after a short release.
+   Tap again: stop on release, retaining focus and leaving text/selection unchanged.
+2. From off, hold at least 500 ms: active while held, stop on release. Repeat using
+   microphone click/click-hold. Test repeat and modifier release in different orders.
+   Combine keyboard and mouse; one source must not finish the other's gesture.
+3. Move focus to a button, read-only field, disabled field or unrecognized custom
+   control: red/slashed microphone, no animation, no start. Lose eligibility or
+   switch between eligible fields while active: preview stops. Exercise browser
+   contenteditable and custom controls explicitly; they are not covered by the
+   native Win32 fixture. Capture no target text in diagnostic evidence.
+4. Close while active: cancel and dismiss only the Widget. Reopen from tray and
+   Hotkey with no valid cursor, retaining the target application's focus. Escape
+   and unrelated shortcuts must continue to work in that application.
+5. Drag by the waveform body. Check each dedicated button does not drag. Close and
+   reopen: dragged position survives. Restart and fresh startup reset position.
+6. On multiple monitors with mixed DPI and negative coordinates, drag, change all
+   five zoom stops, change taskbar/work area, and disconnect a monitor. Confirm
+   the complete Widget scales and stays within the available work area.
+7. Hover each hit region for one second and compare copy exactly with specification
+   section 14.8. Moving regions restarts the delay. Visible content updates on
+   eligibility/Talking changes; real divider, actual configured Hotkey, no position
+   flash, no focus theft. Check light, dark and System themes.
+8. Rebind a free combination and a combination already registered by another app.
+   Confirm conflicts are shown and the previous Hotkey/preferences survive. Test
+   both UK and US layouts, including changing layouts while Dictator is resident.
+9. Confirm Settings explains the simulated preview. No microphone permission,
+   provider connection, inserted text, audio/history files or transcript logs
+   should appear. Record Windows build, run/commit and any unsupported controls.
+
+Hosted tests do not establish browser/custom-control or physical mixed-DPI
+acceptance; these checks must be completed on a Windows desktop.

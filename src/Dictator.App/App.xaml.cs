@@ -130,7 +130,7 @@ public partial class App : Application
         {
             candidate.Validate();
             if (Store.Error is not null) throw new InvalidOperationException(Store.Error);
-            if (host is not null && candidate.Hotkey != Preferences.Hotkey)
+            if (host is not null && (candidate.Hotkey != Preferences.Hotkey || HotkeyError is not null))
             {
                 if (!host.BindHotkey(candidate.Hotkey))
                 {
@@ -224,7 +224,7 @@ public partial class App : Application
         settingsWasActivated = settings?.WasActivated ?? false,
         widgetHandle = (long)(host?.WidgetHandle ?? 0),
         widgetVisible = host is not null && IsWindowVisible(host.WidgetHandle) != 0,
-        previewTalking = preview.Talking, targetEligible = host?.Target.Eligible != 0,
+        previewTalking = preview.Talking, targetEligible = host is not null && host.Target.Eligible != 0,
         hotkeyError = HotkeyError,
         trayReady = host?.TrayReady ?? false,
         preferences = Preferences, settingsError = SettingsError, startupEnabled = Startup.Enabled,

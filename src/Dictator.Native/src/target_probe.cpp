@@ -143,6 +143,7 @@ void target_probe::run() noexcept {
         }
         identity previous{};
         uint64_t generation{};
+        uint64_t previous_epoch{};
         while (true) {
             dictator_input input{};
             bool has_input{};
@@ -156,7 +157,9 @@ void target_probe::run() noexcept {
             }
             identity current{};
             const bool eligible = cache && read_target(automation.Get(), cache.Get(), current);
-            if (current != previous) { ++generation; previous = current; }
+            if (current != previous || epoch != previous_epoch) {
+                ++generation; previous = current; previous_epoch = epoch;
+            }
             dictator_target snapshot{eligible ? generation : 0, reinterpret_cast<uintptr_t>(current.foreground),
                 reinterpret_cast<uintptr_t>(current.focus), GetTickCount64(), current.process, eligible ? 1u : 0u};
             {
