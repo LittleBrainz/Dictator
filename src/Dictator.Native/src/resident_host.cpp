@@ -167,10 +167,7 @@ void show_tooltip(dictator_host* h) noexcept {
     width += 2 * pad;
     MONITORINFO monitor{sizeof(monitor)};
     GetMonitorInfoW(MonitorFromWindow(h->widget, MONITOR_DEFAULTTONEAREST), &monitor);
-    auto work = monitor.rcWork;
-        const int taskbar_height = bottom_taskbar_height(selected, monitor.rcMonitor);
-        if (taskbar_height > 0) work.bottom = std::min(work.bottom, monitor.rcMonitor.bottom - taskbar_height);
-        const int clearance = taskbar_height > 0 ? taskbar_height / 2 : static_cast<int>(std::lround(24 * dpi_x / 96.0));
+    const auto& work = monitor.rcWork;
     width = std::min(width, static_cast<int>(work.right - work.left));
     height = std::min(height, static_cast<int>(work.bottom - work.top));
     RECT r{}; GetWindowRect(h->widget, &r);
@@ -360,12 +357,16 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
             h->dragged = true; place_widget(h, true); hide_tooltip(h); return 0;
         }
         const int region = hit_region(hwnd, lp);
-        if (region != h->hover) { h->hover = region; h->hover_at = GetTickCount64(); hide_tooltip(h); }
+        if (region != h->hover) {
+            h->hover = region; h->hover_at = GetTickCount64(); hide_tooltip(h);
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
         TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, hwnd, 0}; TrackMouseEvent(&tracking); return 0;
     }
-    case WM_MOUSELEAVE: h->hover = -1; hide_tooltip(h); return 0;
+    case WM_MOUSELEAVE: h->hover = -1; hide_tooltip(h); InvalidateRect(hwnd, nullptr, FALSE); return 0;
     case WM_LBUTTONDOWN: {
         h->pressed_region = hit_region(hwnd, lp); hide_tooltip(h); SetCapture(hwnd);
+        InvalidateRect(hwnd, nullptr, FALSE);
         if (h->pressed_region == 0) {
             h->dragging = true; GetCursorPos(&h->drag_origin);
             RECT r{}; GetWindowRect(hwnd, &r); h->window_origin = {r.left, r.top};
@@ -381,11 +382,11 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
             if (pressed == 3) close_widget(h);
             if (pressed == 2) h->events |= 2;
         }
-        h->hover_at = GetTickCount64(); return 0;
+        h->hover_at = GetTickCount64(); InvalidateRect(hwnd, nullptr, FALSE); return 0;
     }
     case WM_CAPTURECHANGED:
         if (h->pressed_region == 1) input_press(h, 2, 2, GetTickCount64());
-        h->pressed_region = -1; h->dragging = false; return 0;
+        h->pressed_region = -1; h->dragging = false; InvalidateRect(hwnd, nullptr, FALSE); return 0;
     case WM_PAINT: paint_widget(h, hwnd); return 0;
     case WM_PRINTCLIENT: draw_widget(h, hwnd, reinterpret_cast<HDC>(wp)); return 0;
     }
