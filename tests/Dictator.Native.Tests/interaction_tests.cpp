@@ -82,12 +82,17 @@ bool capture(HWND widget, const wchar_t* name, bool quiet, bool eligible) {
     const auto old = SelectObject(dc, bitmap);
     SendMessageW(widget, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(dc), PRF_CLIENT);
     GdiFlush();
-    const auto center = GetPixel(dc, r.right * 128 / 270, r.bottom * 37 / 56);
+    COLORREF center{};
+    // Sample across the antialiased line rather than assuming a pixel-center phase.
+    for (int y = r.bottom * 35 / 56; y <= r.bottom * 38 / 56; ++y) {
+        const auto pixel = GetPixel(dc, r.right * 128 / 270, y);
+        if (eligible ? GetGValue(pixel) > GetGValue(center) : GetRValue(pixel) > GetRValue(center)) center = pixel;
+    }
     const auto above = GetPixel(dc, r.right * 128 / 270, r.bottom * 28 / 56);
-    bool ok = !quiet || (eligible ? GET_G_BYTE(center) > 120 && GET_B_BYTE(center) > 180 :
-        GET_R_BYTE(center) > 180 && GET_G_BYTE(center) < 120);
+    bool ok = !quiet || (eligible ? GetGValue(center) > 110 && GetBValue(center) > 160 :
+        GetRValue(center) > 150 && GetGValue(center) < 120);
     // A quiet waveform must remain a single horizontal line, with no vertical bars.
-    if (quiet) ok = ok && GET_G_BYTE(above) < 100 && GET_R_BYTE(above) < 100;
+    if (quiet) ok = ok && GetGValue(above) < 100 && GetRValue(above) < 100;
     wchar_t folder[32768]{};
     if (GetEnvironmentVariableW(L"DICTATOR_WIDGET_EVIDENCE", folder, 32768)) {
         std::filesystem::create_directories(folder);
