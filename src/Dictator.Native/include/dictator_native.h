@@ -98,6 +98,9 @@ DICTATOR_API dictator_audio* DICTATOR_CALL dictator_host_audio_handle(dictator_h
 DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_devices(dictator_audio* audio, dictator_audio_device* devices,
     uint32_t capacity, uint32_t* count) DICTATOR_NOEXCEPT;
 DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_status(dictator_audio* audio, dictator_audio_snapshot* snapshot) DICTATOR_NOEXCEPT;
+// Any non-real-time thread: stop/purge capture on provider failure without
+// waiting for UI dispatch. Borrowed service ownership rules still apply.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_cancel(dictator_audio* audio) DICTATOR_NOEXCEPT;
 // Exactly one serialized non-real-time consumer. Normalized mono float samples
 // at the source sample rate. Max 8192 frames/call. Native and managed copies are
 // transient; consumed/stale native slots are zeroed. Drop-new overflow is counted.

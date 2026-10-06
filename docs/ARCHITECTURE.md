@@ -360,7 +360,9 @@ start and disappears on Quit. Opening Settings while still capturing/finalizing
 loses target eligibility and cancels that pending session; no insertion occurs.
 
 Connect/configuration acknowledgment, send and finalization timeouts are 10/10,
-5 and 15 seconds respectively. Connection failure closes capture, keeps the Widget
+5 and 15 seconds respectively. The background consumer can request native capture cancellation without waiting
+for UI dispatch after provider failure or detected audio loss. Connection failure
+closes capture, keeps the Widget
 available and shows a non-activating tray notice and Settings error. A later gesture
 creates a new connection; no automatic mid-session replay or silent continuation
 loses/duplicates dictated words. Authentication, access, quota and rate limits have

@@ -11,6 +11,7 @@ int main() {
     CHECK(dictator_host_finish_preview(nullptr) == DICTATOR_INVALID_ARGUMENT);
     CHECK(dictator_host_notify_error(nullptr, nullptr) == DICTATOR_INVALID_ARGUMENT);
     CHECK(dictator_host_clear_live_text(nullptr, 1, 1) == DICTATOR_INVALID_ARGUMENT);
+    CHECK(dictator_audio_cancel(nullptr) == DICTATOR_INVALID_ARGUMENT);
     CHECK(dictator_audio_status(nullptr, nullptr) == DICTATOR_INVALID_ARGUMENT);
     CHECK(dictator_audio_read(nullptr, nullptr, 0, nullptr, nullptr) == DICTATOR_INVALID_ARGUMENT);
     for (int cycle = 0; cycle < 6; ++cycle) {

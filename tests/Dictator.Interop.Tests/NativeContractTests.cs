@@ -43,6 +43,8 @@ public sealed class NativeContractTests
         Assert.NotEqual(2u, audio.Snapshot.State); // Enumeration never starts capture.
         host.ConfigureAudio("Dictator.Missing.Test.Microphone");
         Assert.NotEqual(2u, audio.Snapshot.State);
+        var audioHandle = host.AudioHandle;
+        Assert.Equal(NativeResult.Ok, Task.Run(() => NativeMethods.AudioCancel(audioHandle)).GetAwaiter().GetResult());
     }
 
     [Fact]

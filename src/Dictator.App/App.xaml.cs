@@ -122,7 +122,11 @@ public partial class App : Application
                 HotkeyError = "The Hotkey could not be registered for this keyboard layout. Choose another combination.";
                 settings?.RefreshPreferences();
             }
-            if ((pending & 32) != 0) { preview.Cancel(); CancelTranscription(); }
+            if ((pending & 32) != 0) {
+                if (transcription?.Session.Failure is { } fault) FailSpeech(fault.Message);
+                else if (transcription is not null && audio?.TransferFailed == true) FailSpeech("Audio could not be delivered without gaps. Check your connection and start Talking again.");
+                else { preview.Cancel(); CancelTranscription(); }
+            }
             if ((pending & 64) != 0) {
                 AudioError = DescribeAudioError(audio?.Snapshot.Error ?? 5);
                 settings?.RefreshPreferences();

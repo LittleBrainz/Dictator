@@ -39,11 +39,11 @@ internal sealed class AudioBridge : IDisposable
     private readonly float[] samples = new float[4096];
     private Dictator.Core.Transcription.TranscriptionRun? sink;
     private ulong? captureSession;
-    private bool transferFailed;
+    private bool transferFailed, captureCancelled;
     internal bool TransferFailed { get { lock (transfer) return transferFailed; } }
     internal void BeginTransfer(Dictator.Core.Transcription.TranscriptionRun run)
     {
-        lock (transfer) { sink = run; captureSession = null; transferFailed = false; }
+        lock (transfer) { sink = run; captureSession = null; transferFailed = false; captureCancelled = false; }
     }
     internal void FinishTransfer()
     {
@@ -91,16 +91,20 @@ internal sealed class AudioBridge : IDisposable
     private unsafe bool ReadAndTransfer()
     {
         uint count; ulong epoch;
+        if (sink?.Session.Failure is not null) transferFailed = true;
+        if (transferFailed && !captureCancelled) {
+            NativeMethods.EnsureSuccess(NativeMethods.AudioCancel(handle)); captureCancelled = true;
+        }
         var snapshot = Snapshot;
         fixed (float* pointer = samples)
             NativeMethods.EnsureSuccess(NativeMethods.AudioRead(handle, pointer, (uint)samples.Length, out count, out epoch));
         try {
-            if (sink is not null && count != 0 && snapshot.State is 2 or 4) {
+            if (!transferFailed && sink is not null && count != 0 && snapshot.State is 2 or 4) {
                 captureSession ??= epoch;
                 if (captureSession != epoch || snapshot.Session != epoch || snapshot.DroppedFrames != 0 ||
                     !sink.Append(samples.AsSpan(0, checked((int)count)), checked((int)snapshot.SampleRate))) transferFailed = true;
             }
-            if (sink is { EndRequested: true } && Snapshot.State == 0) {
+            if (!transferFailed && sink is { EndRequested: true } && Snapshot.State == 0) {
                 sink.Finish(); sink = null; captureSession = null;
             }
             return count != 0;
@@ -130,6 +134,9 @@ internal static partial class NativeMethods
     [LibraryImport(Library, EntryPoint = "dictator_audio_status")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeResult AudioStatus(nint audio, out NativeAudioSnapshot snapshot);
+    [LibraryImport(Library, EntryPoint = "dictator_audio_cancel")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial NativeResult AudioCancel(nint audio);
     [LibraryImport(Library, EntryPoint = "dictator_audio_read")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe partial NativeResult AudioRead(nint audio, float* samples, uint capacity, out uint count, out ulong session);

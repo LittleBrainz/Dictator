@@ -1,332 +1,173 @@
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#include <mmdeviceapi.h>
-#include <audioclient.h>
-#include <avrt.h>
-#include <initguid.h>
-#include <functiondiscoverykeys_devpkey.h>
-#include <mmreg.h>
-#include <ks.h>
-#include <ksmedia.h>
-#include <wrl/client.h>
-#include <new>
-#include <stdexcept>
-#include <iterator>
-#include "audio_capture.h"
-using Microsoft::WRL::ComPtr;
+#ifndef DICTATOR_NATIVE_H
+#define DICTATOR_NATIVE_H
 
-namespace {
-class notifications final : public IMMNotificationClient {
-    std::atomic<ULONG> references_{1};
-    std::mutex callback_;
-    dictator_audio* owner_;
-    void notify(LPCWSTR id, bool unavailable, bool default_changed) noexcept {
-        std::lock_guard lock(callback_);
-        if (owner_) owner_->changed(id, unavailable, default_changed);
-    }
-public:
-    explicit notifications(dictator_audio& owner) noexcept : owner_(&owner) {}
-    // Unregister may leave queued COM notifications; sever their borrowed owner
-    // while serializing with any callback already in progress.
-    void detach() noexcept { std::lock_guard lock(callback_); owner_ = nullptr; }
-    virtual ~notifications() = default;
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** output) override {
-        if (!output) return E_POINTER;
-        *output = nullptr;
-        if (id == __uuidof(IUnknown) || id == __uuidof(IMMNotificationClient)) {
-            *output = static_cast<IMMNotificationClient*>(this); AddRef(); return S_OK;
-        }
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++references_; }
-    ULONG STDMETHODCALLTYPE Release() override {
-        const auto left = --references_; if (!left) delete this; return left;
-    }
-    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR id, DWORD state) override {
-        notify(id, state != DEVICE_STATE_ACTIVE, false); return S_OK;
-    }
-    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR id) override { notify(id, false, false); return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR id) override { notify(id, true, false); return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR id) override {
-        if (flow == eCapture && role == eConsole) notify(id, false, true); return S_OK;
-    }
-    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR id, const PROPERTYKEY) override {
-        notify(id, false, false); return S_OK;
-    }
-};
-uint32_t classify(HRESULT hr) noexcept {
-    if (hr == E_NOTFOUND || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) return 1;
-    if (hr == E_ACCESSDENIED) return 2;
-    if (hr == AUDCLNT_E_DEVICE_INVALIDATED || hr == AUDCLNT_E_RESOURCES_INVALIDATED) return 3;
-    if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) return 4;
-    return 5;
-}
-}
-static_assert(sizeof(dictator_audio_snapshot) == 64);
-static_assert(sizeof(dictator_audio_device) == 1540);
-static_assert(std::atomic<float>::is_always_lock_free && std::atomic<uint64_t>::is_always_lock_free);
+#include <stdint.h>
 
-dictator_audio::dictator_audio() {
-    shutdown_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    control_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    packets_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    try {
-        if (!shutdown_ || !control_ || !packets_) throw std::runtime_error("Audio events unavailable");
-        worker_ = std::thread([this] { run(); });
-    } catch (...) {
-        if (shutdown_) CloseHandle(shutdown_); if (control_) CloseHandle(control_); if (packets_) CloseHandle(packets_);
-        throw;
-    }
-}
-dictator_audio::~dictator_audio() {
-    SetEvent(shutdown_); if (worker_.joinable()) worker_.join();
-    // Owner has joined its consumer; purge remaining transient audio before free.
-    float discard[1024]{};
-    while (buffer_.read(discard, 1024, buffer_.head())) { }
-    SecureZeroMemory(discard, sizeof(discard));
-    CloseHandle(packets_); CloseHandle(control_); CloseHandle(shutdown_);
-}
-void dictator_audio::start(const wchar_t* selected, uint64_t target, uintptr_t foreground, uintptr_t focus,
-    const std::atomic<uint64_t>* eligibility, const std::atomic<uint64_t>* checked_at) noexcept {
-    if (fatal_.load(std::memory_order_acquire)) return;
-    { std::lock_guard lock(commands_); wcscpy_s(requested_, selected); requested_on_ = true; requested_preserve_ = false; ++request_number_;
-      requested_target_ = target; requested_foreground_ = foreground; requested_focus_ = focus; eligibility_ = eligibility; checked_at_ = checked_at; }
-    state_.store(1, std::memory_order_release);
-    // Initialization failure can race a first gesture; never overwrite its error.
-    if (fatal_.load(std::memory_order_acquire)) state_.store(3, std::memory_order_release);
-    SetEvent(control_);
-}
-void dictator_audio::stop(bool preserve) noexcept {
-    { std::lock_guard lock(commands_); requested_on_ = false; requested_preserve_ = preserve; ++request_number_; }
-    SetEvent(control_);
-}
-void dictator_audio::changed(const wchar_t* id, bool unavailable, bool default_changed) noexcept {
-    revision.fetch_add(1, std::memory_order_relaxed);
-    { std::lock_guard lock(selection_);
-      if (active_[0] && ((unavailable && id && wcscmp(id, active_) == 0) ||
-          (default_changed && follow_default_ && (!id || wcscmp(id, active_) != 0))))
-          removed_.store(true, std::memory_order_release);
-    }
-    SetEvent(control_);
-}
-void dictator_audio::snapshot(dictator_audio_snapshot& out) const noexcept {
-    out = {session_.load(), revision.load(), dropped_.load(), frames_.load(), state_.load(std::memory_order_acquire),
-        error_.load(), status_.load(), sample_rate_.load(), channels_.load(), peak_.load(), rms_.load(), buffer_.buffered()};
-}
-uint32_t dictator_audio::read(float* output, uint32_t capacity_count, uint64_t& session) noexcept {
-    std::lock_guard lock(consumer_); // Only non-real-time consumers ever acquire this mutex.
-    session = session_.load(std::memory_order_acquire);
-    auto count = static_cast<uint32_t>(buffer_.read(output, capacity_count, valid_from_.load(std::memory_order_acquire)));
-    const auto state = state_.load(std::memory_order_acquire);
-    if ((state != 2 && state != 4) || session != session_.load(std::memory_order_acquire)) {
-        SecureZeroMemory(output, count * sizeof(float)); count = 0;
-    }
-    if (state == 4 && buffer_.buffered() == 0) {
-        uint32_t draining = 4;
-        state_.compare_exchange_strong(draining, 0, std::memory_order_acq_rel);
-    }
-    return count;
-}
-void dictator_audio::run() noexcept {
-    const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    if (FAILED(initialized)) { fatal_.store(true); status_.store(initialized); error_.store(5); state_.store(3); return; }
-    {
-        ComPtr<IMMDeviceEnumerator> enumerator;
-        auto hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
-        ComPtr<notifications> listener; listener.Attach(new(std::nothrow) notifications(*this));
-        if (SUCCEEDED(hr) && listener) hr = enumerator->RegisterEndpointNotificationCallback(listener.Get());
-        else if (SUCCEEDED(hr)) hr = E_OUTOFMEMORY;
-        if (FAILED(hr)) { fatal_.store(true); status_.store(hr); error_.store(classify(hr)); state_.store(3); }
-        else {
-            ComPtr<IMMDevice> device; ComPtr<IAudioClient> client; ComPtr<IAudioCaptureClient> capture;
-            WAVEFORMATEX* format{}; HANDLE priority{};
-            bool floating{}; unsigned bits{}; uint64_t applied{};
-            uint64_t bound_target{}; uintptr_t bound_foreground{}, bound_focus{};
-            const std::atomic<uint64_t>* eligibility{}; const std::atomic<uint64_t>* checked_at{};
-            auto target_valid = [&] {
-                GUITHREADINFO gui{sizeof(gui)};
-                const auto foreground = GetForegroundWindow();
-                const auto thread = GetWindowThreadProcessId(foreground, nullptr);
-                return eligibility && checked_at && eligibility->load(std::memory_order_acquire) == bound_target &&
-                    GetTickCount64() - checked_at->load(std::memory_order_acquire) <= 400 &&
-                    reinterpret_cast<uintptr_t>(foreground) == bound_foreground && GetGUIThreadInfo(thread, &gui) &&
-                    reinterpret_cast<uintptr_t>(gui.hwndFocus) == bound_focus;
-            };
-            auto release = [&](bool preserve = false) {
-                if (client) client->Stop();
-                if (priority) { AvRevertMmThreadCharacteristics(priority); priority = nullptr; }
-                capture.Reset(); client.Reset(); device.Reset();
-                if (format) { CoTaskMemFree(format); format = nullptr; }
-                peak_.store(0); rms_.store(0);
-                if (!preserve) {
-                    valid_from_.store(buffer_.head(), std::memory_order_release);
-                    session_.fetch_add(1, std::memory_order_release);
-                }
-                { std::lock_guard lock(selection_); active_[0] = 0; }
-            };
-            auto fail = [&](HRESULT failure, uint32_t reason = 0) {
-                release(); status_.store(failure); error_.store(reason ? reason : classify(failure)); state_.store(3, std::memory_order_release);
-            };
-            const HANDLE waits[] = {shutdown_, control_, packets_};
-            for (;;) {
-                const auto signaled = WaitForMultipleObjects(3, waits, FALSE, 20);
-                if (signaled == WAIT_OBJECT_0) break;
-                if (signaled == WAIT_FAILED) { fatal_.store(true); fail(HRESULT_FROM_WIN32(GetLastError())); break; }
-                if (client && !target_valid()) {
-                    release(); state_.store(0, std::memory_order_release);
-                    // A control event may already have been consumed by this wait.
-                    // Re-signal so a pending stop/new session cannot be lost.
-                    SetEvent(control_); continue;
-                }
-                if (signaled == WAIT_OBJECT_0 + 1) {
-                    wchar_t selected[512]{}; bool enabled{}, preserve{}; uint64_t number{};
-                    { std::lock_guard lock(commands_); enabled = requested_on_; preserve = requested_preserve_; number = request_number_; wcscpy_s(selected, requested_);
-                      bound_target = requested_target_; bound_foreground = requested_foreground_; bound_focus = requested_focus_; eligibility = eligibility_; checked_at = checked_at_; }
-                    if (number != applied) {
-                        applied = number; release(preserve && !enabled); removed_.store(false);
-                        if (!enabled) { state_.store(preserve ? 4u : 0u, std::memory_order_release); continue; }
-                        state_.store(1, std::memory_order_release); error_.store(0); status_.store(0);
-                        dropped_.store(0); frames_.store(0); sample_rate_.store(0); channels_.store(0);
-                        hr = selected[0] ? enumerator->GetDevice(selected, &device) : enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &device);
-                        DWORD available{};
-                        if (SUCCEEDED(hr)) hr = device->GetState(&available);
-                        if (SUCCEEDED(hr) && available != DEVICE_STATE_ACTIVE) hr = AUDCLNT_E_DEVICE_INVALIDATED;
-                        if (SUCCEEDED(hr)) hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client);
-                        if (SUCCEEDED(hr)) hr = client->GetMixFormat(&format);
-                        if (SUCCEEDED(hr)) {
-                            const auto tag = format->wFormatTag;
-                            floating = tag == WAVE_FORMAT_IEEE_FLOAT;
-                            bool pcm = tag == WAVE_FORMAT_PCM;
-                            if (tag == WAVE_FORMAT_EXTENSIBLE && format->cbSize >= sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) {
-                                const auto extended = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(format);
-                                floating = extended->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-                                pcm = extended->SubFormat == KSDATAFORMAT_SUBTYPE_PCM;
-                            }
-                            bits = format->wBitsPerSample;
-                            if ((!floating && !pcm) || (floating && bits != 32) ||
-                                (pcm && bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
-                                format->nChannels == 0 || format->nChannels > 32 || format->nSamplesPerSec < 8000 ||
-                                format->nSamplesPerSec > 192000 || format->nBlockAlign != format->nChannels * (bits / 8))
-                                hr = AUDCLNT_E_UNSUPPORTED_FORMAT;
-                        }
-                        if (SUCCEEDED(hr)) hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED,
-                            AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST, 1000000, 0, format, nullptr);
-                        if (SUCCEEDED(hr)) hr = client->SetEventHandle(packets_);
-                        if (SUCCEEDED(hr)) hr = client->GetService(IID_PPV_ARGS(&capture));
-                        LPWSTR identity{};
-                        if (SUCCEEDED(hr)) hr = device->GetId(&identity);
-                        if (SUCCEEDED(hr)) {
-                            if (wcslen(identity) >= 512) hr = E_INVALIDARG;
-                            else { std::lock_guard lock(selection_); wcscpy_s(active_, identity); follow_default_ = !selected[0]; }
-                        }
-                        if (identity) CoTaskMemFree(identity);
-                        // A default change during setup can precede publication of
-                        // active_. Recheck after binding notifications to this ID.
-                        if (SUCCEEDED(hr) && !selected[0]) {
-                            ComPtr<IMMDevice> current_default; LPWSTR current_id{};
-                            hr = enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &current_default);
-                            if (SUCCEEDED(hr)) hr = current_default->GetId(&current_id);
-                            if (SUCCEEDED(hr)) {
-                                std::lock_guard lock(selection_);
-                                if (wcscmp(current_id, active_) != 0) hr = AUDCLNT_E_DEVICE_INVALIDATED;
-                            }
-                            if (current_id) CoTaskMemFree(current_id);
-                        }
-                        if (SUCCEEDED(hr) && removed_.load(std::memory_order_acquire)) hr = AUDCLNT_E_DEVICE_INVALIDATED;
-                        DWORD task{};
-                        if (SUCCEEDED(hr)) priority = AvSetMmThreadCharacteristicsW(L"Audio", &task);
-                        bool cancelled{};
-                        { std::lock_guard lock(commands_); cancelled = request_number_ != number || !requested_on_; }
-                        if (cancelled || !target_valid()) { release(); state_.store(0, std::memory_order_release); SetEvent(control_); continue; }
-                        if (SUCCEEDED(hr)) hr = client->Start();
-                        if (FAILED(hr)) { fail(hr); continue; }
-                        sample_rate_.store(format->nSamplesPerSec); channels_.store(format->nChannels);
-                        state_.store(2, std::memory_order_release);
-                    } else if (removed_.exchange(false) && client) fail(AUDCLNT_E_DEVICE_INVALIDATED, 3);
-                    continue;
-                }
-                if (signaled != WAIT_OBJECT_0 + 2 || !capture) continue;
-                // Real-time packet path: stack scratch, atomics and bounded writes.
-                // No locks, managed calls, allocation, UI, network, disk or logging.
-                for (int packet = 0; packet < 8 && capture; ++packet) {
-                    UINT32 pending{}; hr = capture->GetNextPacketSize(&pending);
-                    if (FAILED(hr)) { fail(hr); break; }
-                    if (!pending) break;
-                    BYTE* data{}; UINT32 count{}; DWORD flags{};
-                    hr = capture->GetBuffer(&data, &count, &flags, nullptr, nullptr);
-                    if (FAILED(hr)) { fail(hr); break; }
-                    float scratch[1024]{}; double square{}; float peak{};
-                    for (UINT32 offset = 0; offset < count; ) {
-                        const auto block = std::min(UINT32{1024}, count - offset);
-                        for (UINT32 i = 0; i < block; ++i) {
-                            const auto value = (flags & AUDCLNT_BUFFERFLAGS_SILENT) ? 0 :
-                                audio_data::mono(data + (offset + i) * format->nBlockAlign, format->nChannels, bits, floating);
-                            scratch[i] = value; peak = std::max(peak, std::abs(value)); square += static_cast<double>(value) * value;
-                        }
-                        const auto accepted = buffer_.write(scratch, block);
-                        dropped_.fetch_add(block - accepted, std::memory_order_relaxed); offset += block;
-                    }
-                    SecureZeroMemory(scratch, sizeof(scratch));
-                    hr = capture->ReleaseBuffer(count);
-                    if (FAILED(hr)) { fail(hr); break; }
-                    frames_.fetch_add(count, std::memory_order_relaxed); peak_.store(peak);
-                    rms_.store(count ? static_cast<float>(std::sqrt(square / count)) : 0);
-                }
-            }
-            release(); if (!fatal_.load()) state_.store(0); enumerator->UnregisterEndpointNotificationCallback(listener.Get()); listener->detach();
-        }
-    }
-    CoUninitialize();
-}
+#if defined(_WIN32)
+#  if defined(DICTATOR_NATIVE_EXPORTS)
+#    define DICTATOR_API __declspec(dllexport)
+#  else
+#    define DICTATOR_API __declspec(dllimport)
+#  endif
+#  define DICTATOR_CALL __cdecl
+#else
+// Portable contract-test build only. The product ships exclusively on Windows x64.
+#  define DICTATOR_API __attribute__((visibility("default")))
+#  define DICTATOR_CALL
+#endif
+#ifdef __cplusplus
+#  define DICTATOR_NOEXCEPT noexcept
+extern "C" {
+#else
+#  define DICTATOR_NOEXCEPT
+#endif
 
-dictator_result DICTATOR_CALL dictator_audio_devices(dictator_audio* audio, dictator_audio_device* output,
-    uint32_t capacity_count, uint32_t* count) noexcept {
-    if (!audio || !count || (!output && capacity_count) || capacity_count > 128) return DICTATOR_INVALID_ARGUMENT;
-    *count = 0;
-    const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE) return DICTATOR_PLATFORM_ERROR;
-    dictator_result result = DICTATOR_OK;
-    {
-        ComPtr<IMMDeviceEnumerator> enumerator; ComPtr<IMMDeviceCollection> devices; ComPtr<IMMDevice> default_device;
-        auto hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
-        LPWSTR default_id{};
-        if (SUCCEEDED(hr) && SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &default_device))) default_device->GetId(&default_id);
-        if (SUCCEEDED(hr)) hr = enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &devices);
-        UINT total{}; if (SUCCEEDED(hr)) hr = devices->GetCount(&total);
-        if (FAILED(hr)) result = DICTATOR_PLATFORM_ERROR;
-        else if (total > 128) result = DICTATOR_BUFFER_TOO_SMALL;
-        else {
-            *count = total;
-            if (capacity_count < total) result = DICTATOR_BUFFER_TOO_SMALL;
-            else for (UINT i = 0; i < total; ++i) {
-                ComPtr<IMMDevice> device; ComPtr<IPropertyStore> properties; LPWSTR id{}; PROPVARIANT name{};
-                hr = devices->Item(i, &device);
-                if (SUCCEEDED(hr)) hr = device->GetId(&id);
-                if (SUCCEEDED(hr) && wcslen(id) >= 512) hr = E_INVALIDARG;
-                if (SUCCEEDED(hr)) hr = device->OpenPropertyStore(STGM_READ, &properties);
-                if (SUCCEEDED(hr)) hr = properties->GetValue(PKEY_Device_FriendlyName, &name);
-                if (SUCCEEDED(hr)) {
-                    auto& value = output[i]; value = {};
-                    wcscpy_s(reinterpret_cast<wchar_t*>(value.id), 512, id);
-                    wcsncpy_s(reinterpret_cast<wchar_t*>(value.name), 256,
-                        name.vt == VT_LPWSTR && name.pwszVal ? name.pwszVal : L"Microphone", _TRUNCATE);
-                    value.is_default = default_id && wcscmp(default_id, id) == 0 ? 1u : 0u;
-                }
-                PropVariantClear(&name); if (id) CoTaskMemFree(id);
-                if (FAILED(hr)) { *count = 0; result = DICTATOR_PLATFORM_ERROR; break; }
-            }
-        }
-        if (default_id) CoTaskMemFree(default_id);
-    }
-    if (SUCCEEDED(initialized)) CoUninitialize(); return result;
+#define DICTATOR_ABI_VERSION UINT32_C(1)
+typedef struct dictator_context dictator_context;
+typedef uint32_t dictator_result;
+#define DICTATOR_OK UINT32_C(0)
+#define DICTATOR_INVALID_ARGUMENT UINT32_C(1)
+#define DICTATOR_ABI_MISMATCH UINT32_C(2)
+#define DICTATOR_BUFFER_TOO_SMALL UINT32_C(3)
+#define DICTATOR_OUT_OF_MEMORY UINT32_C(4)
+#define DICTATOR_PLATFORM_ERROR UINT32_C(5)
+#define DICTATOR_WRONG_THREAD UINT32_C(6)
+
+// Natural 8-byte alignment; exactly 24 bytes on the supported x64 ABI.
+// Initialize struct_size to sizeof(dictator_snapshot) before calling poll.
+typedef struct dictator_snapshot {
+    uint32_t struct_size;
+    uint32_t abi_version;
+    uint64_t sequence;
+    uint32_t owner_thread_id;
+    uint32_t poll_thread_id;
+} dictator_snapshot;
+
+DICTATOR_API uint32_t DICTATOR_CALL dictator_get_abi_version(void) DICTATOR_NOEXCEPT;
+// Borrowed diagnostic value. Tests compare before/after; this is not an allocator API.
+DICTATOR_API uint32_t DICTATOR_CALL dictator_get_live_context_count(void) DICTATOR_NOEXCEPT;
+// On failure *out_context is NULL. Caller owns the returned handle.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_create_context(
+    uint32_t requested_abi, dictator_context** out_context) DICTATOR_NOEXCEPT;
+// Destroy exactly once. NULL is permitted. Never use a handle after destruction.
+DICTATOR_API void DICTATOR_CALL dictator_destroy_context(dictator_context* context) DICTATOR_NOEXCEPT;
+// Polling runs synchronously on the calling non-real-time consumer thread.
+// Calls for a given context must be serialized; separate contexts are independent.
+// These context/probe operations start no callbacks, workers, UI, audio or I/O.
+// Resident surface operations below explicitly create native UI on the caller thread.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_poll(
+    dictator_context* context, dictator_snapshot* snapshot) DICTATOR_NOEXCEPT;
+// UTF-16 code units, including surrogate pairs and embedded NULs, are copied verbatim.
+// Both buffers are borrowed for this call only; they must not overlap.
+// input_count excludes the terminator. required_count includes a trailing NUL.
+// Query size with output=NULL/capacity=0. Too-small output is left untouched.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_copy_text(
+    dictator_context* context, const uint16_t* input, uint32_t input_count,
+    uint16_t* output, uint32_t output_capacity, uint32_t* required_count) DICTATOR_NOEXCEPT;
+
+#if defined(_WIN32)
+// Additive ABI 1 resident surface. All calls, including destruction, must run on
+// the creating UI thread. Windows messages run on that thread's existing pump.
+// No managed callbacks. poll_events transfers a bitset: Widget=1, Settings=2,
+// Restart=4, Quit=8, Hotkey failure=16, Cancel preview=32. Native owns HWNDs, tray icon, menu and drawing resources.
+typedef struct dictator_host dictator_host;
+typedef struct dictator_audio dictator_audio;
+typedef struct dictator_audio_device {
+    uint16_t id[512];
+    uint16_t name[256];
+    uint32_t is_default;
+} dictator_audio_device;
+// Exactly 64 bytes. State: idle=0, starting=1, capturing=2, error=3, draining=4 (stopped capture; consumer drains final chunks).
+// Error: none=0, no device=1, permissions=2, device changed=3,
+// unsupported format=4, platform failure=5. Metadata only; no PCM in diagnostics.
+typedef struct dictator_audio_snapshot {
+    uint64_t session, device_revision, dropped_frames, captured_frames;
+    uint32_t state, error;
+    int32_t status;
+    uint32_t sample_rate, channels;
+    float peak, rms;
+    uint32_t buffered_frames;
+} dictator_audio_snapshot;
+// UI-thread configuration. Empty ID follows Windows' default capture endpoint.
+// Selecting a device cancels any current session. No capture until an eligible gesture.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_configure_audio(dictator_host* host, const uint16_t* device_id) DICTATOR_NOEXCEPT;
+// Borrowed audio service valid until host destruction. Caller must stop/join all
+// background consumers/catalog tasks before destroying the host.
+DICTATOR_API dictator_audio* DICTATOR_CALL dictator_host_audio_handle(dictator_host* host) DICTATOR_NOEXCEPT;
+// Non-real-time calls, any thread. Catalog enumeration never opens a microphone.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_devices(dictator_audio* audio, dictator_audio_device* devices,
+    uint32_t capacity, uint32_t* count) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_status(dictator_audio* audio, dictator_audio_snapshot* snapshot) DICTATOR_NOEXCEPT;
+// Any non-real-time thread: stop/purge capture on provider failure without
+// waiting for UI dispatch. Borrowed service ownership rules still apply.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_cancel(dictator_audio* audio) DICTATOR_NOEXCEPT;
+// Exactly one serialized non-real-time consumer. Normalized mono float samples
+// at the source sample rate. Max 8192 frames/call. Native and managed copies are
+// transient; consumed/stale native slots are zeroed. Drop-new overflow is counted.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_read(dictator_audio* audio, float* samples, uint32_t capacity,
+    uint32_t* count, uint64_t* session) DICTATOR_NOEXCEPT;
+typedef struct dictator_target {
+    uint64_t token;
+    uintptr_t foreground;
+    uintptr_t focus;
+    uint64_t checked_at;
+    uint32_t process_id;
+    uint32_t eligible;
+    uint32_t reason; // Metadata-only diagnostic stage; 0 means ready.
+    int32_t status; // HRESULT, never target text.
+} dictator_target;
+typedef struct dictator_input {
+    uint64_t timestamp;
+    uint64_t target;
+    uint32_t source; // Hotkey=1, microphone=2
+    uint32_t down; // Release=0, press=1, source cancellation=2.
+} dictator_input;
+// Additive Phase 2 metadata/input contract; UI thread only, caller-owned outputs.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_bind_hotkey(
+    dictator_host* host, uint32_t modifiers, uint32_t key, uint32_t layout_backslash, const uint16_t* display) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_target(
+    dictator_host* host, dictator_target* output) DICTATOR_NOEXCEPT;
+DICTATOR_API uint32_t DICTATOR_CALL dictator_host_input(
+    dictator_host* host, dictator_input* output) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_preview(
+    dictator_host* host, uint64_t target) DICTATOR_NOEXCEPT;
+// UI-thread raw text presentation bridge, for the future transcription provider.
+// Snapshot the current presentation session at start; 0 means inactive/wrong thread.
+// An old session is rejected even if Talking restarts in the same target field.
+DICTATOR_API uint64_t DICTATOR_CALL dictator_host_live_text_session(dictator_host* host) DICTATOR_NOEXCEPT;
+// Append UTF-16 deltas only to the currently Talking target/session. The input is borrowed
+// for this call and copied. Max 2048 units per delta, 4096 queued units/128 deltas.
+// Invalid/stale/inactive targets return INVALID_ARGUMENT. A full queue returns
+// BUFFER_TOO_SMALL without accepting the delta. Stop/focus loss/close clears it.
+// This function captures, formats, inserts and persists nothing.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_append_live_text(
+    dictator_host* host, uint64_t target, uint64_t session, const uint16_t* input, uint32_t count) DICTATOR_NOEXCEPT;
+// Graceful UI-thread Talk stop: close the capture device, preserve only its
+// bounded final chunks for the current consumer. Eligibility/error/close/abort
+// continue to invalidate and purge immediately. Next start invalidates old data.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_finish_preview(dictator_host* host) DICTATOR_NOEXCEPT;
+// UI-thread presentation-only clear for bounded ticker backpressure. Session must
+// still be active; this does not change its epoch or touch audio/transcription.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_clear_live_text(dictator_host* host, uint64_t target, uint64_t session) DICTATOR_NOEXCEPT;
+// UI-thread sanitized user error notice. No transcript or credential content.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_notify_error(dictator_host* host, const uint16_t* message) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_create(
+    uint32_t requested_abi, dictator_host** out_host) DICTATOR_NOEXCEPT;
+DICTATOR_API void DICTATOR_CALL dictator_host_destroy(dictator_host* host) DICTATOR_NOEXCEPT;
+DICTATOR_API uint32_t DICTATOR_CALL dictator_host_poll_events(dictator_host* host) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_set_widget(
+    dictator_host* host, uint32_t visible, double zoom, uint32_t theme) DICTATOR_NOEXCEPT;
+// Borrowed HWND; never destroy or retain after host destruction. Diagnostic only.
+DICTATOR_API uintptr_t DICTATOR_CALL dictator_host_widget_handle(dictator_host* host) DICTATOR_NOEXCEPT;
+DICTATOR_API uint32_t DICTATOR_CALL dictator_host_tray_ready(dictator_host* host) DICTATOR_NOEXCEPT;
+#endif
+
+#ifdef __cplusplus
 }
-dictator_result DICTATOR_CALL dictator_audio_status(dictator_audio* audio, dictator_audio_snapshot* output) noexcept {
-    if (!audio || !output) return DICTATOR_INVALID_ARGUMENT;
-    audio->snapshot(*output); return DICTATOR_OK;
-}
-dictator_result DICTATOR_CALL dictator_audio_read(dictator_audio* audio, float* output, uint32_t capacity_count,
-    uint32_t* count, uint64_t* session) noexcept {
-    if (!audio || !output || !count || !session || !capacity_count || capacity_count > 8192) return DICTATOR_INVALID_ARGUMENT;
-    *count = audio->read(output, capacity_count, *session); return DICTATOR_OK;
+#endif
+#endif
+
+dictator_result DICTATOR_CALL dictator_audio_cancel(dictator_audio* audio) noexcept {
+    if (!audio) return DICTATOR_INVALID_ARGUMENT;
+    audio->stop(); return DICTATOR_OK;
 }
