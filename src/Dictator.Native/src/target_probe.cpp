@@ -111,7 +111,9 @@ void target_probe::input(uint32_t source, uint32_t down, uint64_t timestamp) noe
         if (requests_.size() >= 64) { ++epoch_; requests_.clear(); inputs_.clear(); target_ = {}; }
         else requests_.push_back({timestamp, 0, source, down});
         wake_.notify_one();
-    } catch (...) { /* fail closed; no exception crosses the input hook */ }
+    } catch (...) {
+        std::lock_guard lock(mutex_); ++epoch_; requests_.clear(); inputs_.clear(); target_ = {};
+    }
 }
 dictator_target target_probe::snapshot() noexcept { std::lock_guard lock(mutex_); return target_; }
 bool target_probe::pop(dictator_input& output) noexcept {
@@ -172,7 +174,7 @@ void target_probe::run() noexcept {
                 target_ = snapshot;
                 if (has_input && epoch == epoch_) {
                     input.target = snapshot.token;
-                    if (inputs_.size() >= 64) { inputs_.clear(); target_ = {}; }
+                    if (inputs_.size() >= 64) { ++epoch_; requests_.clear(); inputs_.clear(); target_ = {}; }
                     else inputs_.push_back(input);
                 }
             }

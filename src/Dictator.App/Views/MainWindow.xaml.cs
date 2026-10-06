@@ -91,9 +91,9 @@ public sealed partial class MainWindow : Window
             (Down(VirtualKey.Shift) ? 4 : 0) | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);
         if (modifiers == 0) return;
         args.Handled = true;
-        var backslash = modifiers == 3 && (MapVirtualKeyExW((uint)args.Key, 2, GetKeyboardLayout(0)) & 0x7FFFFFFF) == '\\';
+        var backslash = (MapVirtualKeyExW((uint)args.Key, 2, GetKeyboardLayout(0)) & 0x7FFFFFFF) == '\\';
         owner.Save(owner.Preferences with {
-            Hotkey = backslash ? new() : new(modifiers, (int)args.Key, LayoutBackslash: false)
+            Hotkey = backslash ? new(modifiers, 0xDC) : new(modifiers, (int)args.Key, LayoutBackslash: false)
         });
     }
     private void OnResetHotkey(object sender, RoutedEventArgs args) => owner.Save(owner.Preferences with { Hotkey = new() });

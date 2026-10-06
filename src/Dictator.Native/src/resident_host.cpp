@@ -190,7 +190,7 @@ LRESULT CALLBACK tooltip_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noe
     return DefWindowProcW(hwnd, message, wp, lp);
 }
 uint32_t resolved_key(dictator_host* h) noexcept {
-    if (!h->layout_backslash || h->key != 0xDC || h->modifiers != 3) return h->key;
+    if (!h->layout_backslash || h->key != 0xDC) return h->key;
     const auto foreground = GetForegroundWindow();
     const auto layout = GetKeyboardLayout(GetWindowThreadProcessId(foreground, nullptr));
     const auto mapped = VkKeyScanExW(L'\\', layout);
@@ -465,7 +465,11 @@ dictator_result DICTATOR_CALL dictator_host_bind_hotkey(dictator_host* h, uint32
     if (old_modifiers == modifiers && h->registered_key == resolved) {
         wcsncpy_s(h->hotkey, reinterpret_cast<const wchar_t*>(display), _TRUNCATE); return DICTATOR_OK;
     }
-    if (!reserve_hotkey(h, resolved)) { h->modifiers = old_modifiers; h->key = old_key; h->layout_backslash = old_layout_backslash; return DICTATOR_PLATFORM_ERROR; }
+    if (!reserve_hotkey(h, resolved)) {
+        h->modifiers = old_modifiers; h->key = old_key; h->layout_backslash = old_layout_backslash;
+        if (!old_key) wcsncpy_s(h->hotkey, reinterpret_cast<const wchar_t*>(display), _TRUNCATE);
+        return DICTATOR_PLATFORM_ERROR;
+    }
     h->key_down = false; h->talking = false; h->target = 0; h->events |= 32;
     h->probe->cancel_inputs();
     wcsncpy_s(h->hotkey, reinterpret_cast<const wchar_t*>(display), _TRUNCATE);

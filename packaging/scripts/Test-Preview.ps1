@@ -20,6 +20,12 @@ public static class DictatorPreviewWindows {
     public static IntPtr FindTarget() => FindWindow("Dictator.Phase2.Target", null);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    public static string ForegroundProcess() {
+        GetWindowThreadProcessId(GetForegroundWindow(), out var process);
+        try { return System.Diagnostics.Process.GetProcessById((int)process).ProcessName; }
+        catch { return "unavailable"; }
+    }
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr w, IntPtr l);
 }
 '@
@@ -51,7 +57,7 @@ function Wait-State([bool] $Eligible, [bool] $Talking, [bool] $Visible = $true) 
         if ($state.targetEligible -eq $Eligible -and $state.previewTalking -eq $Talking -and $state.widgetVisible -eq $Visible) { return $state }
         Start-Sleep -Milliseconds 30
     } while ($timer.Elapsed.TotalSeconds -lt 8)
-    throw "Preview state mismatch: eligible=$($state.targetEligible), talking=$($state.previewTalking), visible=$($state.widgetVisible), targetPID=$($state.targetProcessId), foreground=$($state.targetForeground), focus=$($state.targetFocus), reason=$($state.targetReason), status=$($state.targetStatus), fixturePID=$($fixtureProcess.Id), fixtureHWND=$target, currentForeground=$([DictatorPreviewWindows]::GetForegroundWindow())."
+    throw "Preview state mismatch: eligible=$($state.targetEligible), talking=$($state.previewTalking), visible=$($state.widgetVisible), targetPID=$($state.targetProcessId), foreground=$($state.targetForeground), focus=$($state.targetFocus), reason=$($state.targetReason), status=$($state.targetStatus), fixturePID=$($fixtureProcess.Id), fixtureHWND=$target, currentForeground=$([DictatorPreviewWindows]::GetForegroundWindow()), foregroundProcess=$([DictatorPreviewWindows]::ForegroundProcess())."
 }
 function Press-Hotkey {
     [DictatorPreviewWindows]::Key(0x11, $false)
@@ -65,7 +71,7 @@ function Release-Hotkey {
 }
 function Tap-Hotkey { Press-Hotkey; Start-Sleep -Milliseconds 40; Release-Hotkey }
 try {
-    $fixtureProcess = Start-Process $fixtureExe -ArgumentList '--target-fixture' -PassThru
+    $fixtureProcess = Start-Process $fixtureExe -ArgumentList '--target-fixture' -NoNewWindow -PassThru
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {
         # Keep the null window-name wildcard inside C#: PowerShell can coerce a
@@ -85,6 +91,7 @@ try {
     $hostProcess = [Diagnostics.Process]::GetProcessById($fresh.processId)
     $null = $hostProcess.Handle
     if ($fresh.hotkeyError) { throw "Default Hotkey registration failed: $($fresh.hotkeyError)" }
+    if ([DictatorPreviewWindows]::GetForegroundWindow() -ne $target) { throw "Startup lost target focus to $([DictatorPreviewWindows]::ForegroundProcess())." }
     $null = Wait-State $true $false
     Tap-Hotkey
     $active = Wait-State $true $true
