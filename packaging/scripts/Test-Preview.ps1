@@ -51,7 +51,7 @@ function Wait-State([bool] $Eligible, [bool] $Talking, [bool] $Visible = $true) 
         if ($state.targetEligible -eq $Eligible -and $state.previewTalking -eq $Talking -and $state.widgetVisible -eq $Visible) { return $state }
         Start-Sleep -Milliseconds 30
     } while ($timer.Elapsed.TotalSeconds -lt 8)
-    throw "Preview state mismatch: eligible=$($state.targetEligible), talking=$($state.previewTalking), visible=$($state.widgetVisible)."
+    throw "Preview state mismatch: eligible=$($state.targetEligible), talking=$($state.previewTalking), visible=$($state.widgetVisible), targetPID=$($state.targetProcessId), foreground=$($state.targetForeground), focus=$($state.targetFocus), reason=$($state.targetReason), status=$($state.targetStatus), fixturePID=$($fixtureProcess.Id), fixtureHWND=$target, currentForeground=$([DictatorPreviewWindows]::GetForegroundWindow())."
 }
 function Press-Hotkey {
     [DictatorPreviewWindows]::Key(0x11, $false)
@@ -80,6 +80,7 @@ try {
     # Explicit US layout for this package test; native interaction tests cover UK too.
     $null = [DictatorPreviewWindows]::SendMessage($target, 0x8005, [IntPtr]::Zero, [IntPtr]::Zero)
     $null = [DictatorPreviewWindows]::SendMessage($target, 0x8001, [IntPtr]::Zero, [IntPtr]::Zero)
+    Write-Host "Preview fixture HWND=$target, PID=$($fixtureProcess.Id), foreground=$([DictatorPreviewWindows]::GetForegroundWindow()) before application launch."
     $fresh = Request 'launch'
     $hostProcess = [Diagnostics.Process]::GetProcessById($fresh.processId)
     $null = $hostProcess.Handle

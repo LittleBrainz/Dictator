@@ -217,19 +217,25 @@ public partial class App : Application
         if (recentErrors.Count == 8) recentErrors.Dequeue();
         recentErrors.Enqueue($"{DateTime.UtcNow:O} {message}");
     }
-    private string Snapshot() => JsonSerializer.Serialize(new {
+    private string Snapshot()
+    {
+        var target = host?.Target ?? default;
+        return JsonSerializer.Serialize(new {
         status = "ok", processId = Environment.ProcessId,
         settingsTitle = settings?.Title, settingsHandle = (long)(settings?.Handle ?? 0),
         settingsVisible = settings is not null && IsWindowVisible(settings.Handle) != 0,
         settingsWasActivated = settings?.WasActivated ?? false,
         widgetHandle = (long)(host?.WidgetHandle ?? 0),
         widgetVisible = host is not null && IsWindowVisible(host.WidgetHandle) != 0,
-        previewTalking = preview.Talking, targetEligible = host is not null && host.Target.Eligible != 0,
+        previewTalking = preview.Talking, targetEligible = target.Eligible != 0,
+        targetProcessId = target.ProcessId, targetForeground = (long)target.Foreground,
+        targetFocus = (long)target.Focus, targetReason = target.Reason, targetStatus = target.Status,
         hotkeyError = HotkeyError,
         trayReady = host?.TrayReady ?? false,
         preferences = Preferences, settingsError = SettingsError, startupEnabled = Startup.Enabled,
         settingsPath = Store.FilePath, managedReadyMs, widgetReadyMs
-    });
+        });
+    }
 
     private async void ScheduleShutdown(bool restart)
     {

@@ -35,7 +35,7 @@ constexpr wchar_t owner_class[] = L"Dictator.Resident.1";
 constexpr wchar_t widget_class[] = L"Dictator.Widget.1";
 constexpr wchar_t tooltip_class[] = L"Dictator.Tooltip.2";
 thread_local dictator_host* input_host{};
-static_assert(sizeof(dictator_target) == 40);
+static_assert(sizeof(dictator_target) == 48);
 static_assert(sizeof(dictator_input) == 24);
 bool correct_thread(dictator_host* h) noexcept { return h && h->thread == GetCurrentThreadId(); }
 uint64_t mouse_timestamp() noexcept {
@@ -239,7 +239,7 @@ void refresh_target(dictator_host* h) noexcept {
     const auto thread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
     if (now - target.checked_at > 400 || reinterpret_cast<HWND>(target.foreground) != GetForegroundWindow() ||
         !GetGUIThreadInfo(thread, &gui) || reinterpret_cast<HWND>(target.focus) != gui.hwndFocus) {
-        target.token = 0; target.eligible = 0;
+        target.token = 0; target.eligible = 0; target.reason = 50;
     }
     const bool changed = h->current.token != target.token || h->current.eligible != target.eligible;
     h->current = target;

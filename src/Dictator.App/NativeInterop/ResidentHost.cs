@@ -41,6 +41,8 @@ internal struct NativeTarget
     public ulong CheckedAt;
     public uint ProcessId;
     public uint Eligible;
+    public uint Reason;
+    public int Status;
 }
 [StructLayout(LayoutKind.Sequential)]
 internal struct NativeInput

@@ -42,23 +42,26 @@ uint64_t runtime_identity(IUIAutomationElement* element) noexcept {
     SafeArrayDestroy(array);
     return hash;
 }
-bool read_target(IUIAutomation* automation, IUIAutomationCacheRequest* cache, identity& result) {
+bool read_target(IUIAutomation* automation, IUIAutomationCacheRequest* cache, identity& result, uint32_t& reason, int32_t& status) {
+    auto fail = [&](uint32_t stage, HRESULT hr = S_OK) { reason = stage; status = hr; return false; };
     result.foreground = GetForegroundWindow();
-    if (!result.foreground) return false;
+    if (!result.foreground) return fail(1);
     const auto thread = GetWindowThreadProcessId(result.foreground, &result.process);
-    if (!thread) return false;
+    if (!thread) return fail(2);
     GUITHREADINFO gui{sizeof(gui)};
-    if (!GetGUIThreadInfo(thread, &gui) || !gui.hwndFocus) return false;
+    if (!GetGUIThreadInfo(thread, &gui) || !gui.hwndFocus) return fail(3);
     result.focus = gui.hwndFocus;
     // Dictator Settings deliberately activates; it is never a dictation target.
-    if (result.process == GetCurrentProcessId()) return false;
+    if (result.process == GetCurrentProcessId()) return fail(4);
     ComPtr<IUIAutomationElement> element;
-    if (!automation || FAILED(automation->GetFocusedElementBuildCache(cache, &element)) || !element) return false;
+    if (!automation) return fail(5);
+    const auto focus_status = automation->GetFocusedElementBuildCache(cache, &element);
+    if (FAILED(focus_status) || !element) return fail(6, focus_status);
     bool enabled{}, focused{}, value_available{}, readonly{true}, text_available{};
     if (!cached_bool(element.Get(), UIA_IsEnabledPropertyId, enabled) || !enabled ||
-        !cached_bool(element.Get(), UIA_HasKeyboardFocusPropertyId, focused) || !focused) return false;
+        !cached_bool(element.Get(), UIA_HasKeyboardFocusPropertyId, focused) || !focused) return fail(7);
     int process{};
-    if (FAILED(element->get_CachedProcessId(&process)) || static_cast<DWORD>(process) != result.process) return false;
+    if (FAILED(element->get_CachedProcessId(&process)) || static_cast<DWORD>(process) != result.process) return fail(8);
     cached_bool(element.Get(), UIA_IsValuePatternAvailablePropertyId, value_available);
     const bool readonly_known = cached_bool(element.Get(), UIA_ValueIsReadOnlyPropertyId, readonly);
     bool editable = value_available && readonly_known && !readonly;
@@ -78,19 +81,19 @@ bool read_target(IUIAutomation* automation, IUIAutomationCacheRequest* cache, id
             }
         }
     }
-    if (!editable) return false;
+    if (!editable) return fail(9);
     result.element = runtime_identity(element.Get());
-    if (!result.element || GetForegroundWindow() != result.foreground) return false;
+    if (!result.element || GetForegroundWindow() != result.foreground) return fail(10);
     GUITHREADINFO after{sizeof(after)};
-    if (!GetGUIThreadInfo(thread, &after) || after.hwndFocus != result.focus) return false;
+    if (!GetGUIThreadInfo(thread, &after) || after.hwndFocus != result.focus) return fail(11);
     result.monitor = MonitorFromWindow(result.foreground, MONITOR_DEFAULTTONEAREST);
     HANDLE process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, result.process);
-    if (!process_handle) return false;
+    if (!process_handle) return fail(12);
     wchar_t executable[32768]{};
     DWORD length = static_cast<DWORD>(std::size(executable));
     const bool success = QueryFullProcessImageNameW(process_handle, 0, executable, &length) != FALSE;
     CloseHandle(process_handle);
-    if (!success) return false;
+    if (!success) return fail(13);
     result.application.assign(executable, length);
     return true;
 }
@@ -124,14 +127,14 @@ void target_probe::run() noexcept {
     try {
         ComPtr<IUIAutomation> automation;
         ComPtr<IUIAutomationCacheRequest> cache;
-        CoCreateInstance(CLSID_CUIAutomation8, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+        auto activation_status = CoCreateInstance(CLSID_CUIAutomation8, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
         if (automation) {
             ComPtr<IUIAutomation2> automation2;
             if (SUCCEEDED(automation.As(&automation2))) {
                 automation2->put_ConnectionTimeout(200);
                 automation2->put_TransactionTimeout(200);
             }
-            automation->CreateCacheRequest(&cache);
+            activation_status = automation->CreateCacheRequest(&cache);
             if (cache) {
                 cache->AddProperty(UIA_ProcessIdPropertyId);
                 cache->AddProperty(UIA_IsEnabledPropertyId);
@@ -156,12 +159,14 @@ void target_probe::run() noexcept {
                 if (!requests_.empty()) { input = requests_.front(); requests_.pop_front(); has_input = true; }
             }
             identity current{};
-            const bool eligible = cache && read_target(automation.Get(), cache.Get(), current);
+            uint32_t reason = cache ? 0u : 14u;
+            int32_t status = cache ? S_OK : activation_status;
+            const bool eligible = cache && read_target(automation.Get(), cache.Get(), current, reason, status);
             if (current != previous || epoch != previous_epoch) {
                 ++generation; previous = current; previous_epoch = epoch;
             }
             dictator_target snapshot{eligible ? generation : 0, reinterpret_cast<uintptr_t>(current.foreground),
-                reinterpret_cast<uintptr_t>(current.focus), GetTickCount64(), current.process, eligible ? 1u : 0u};
+                reinterpret_cast<uintptr_t>(current.focus), GetTickCount64(), current.process, eligible ? 1u : 0u, reason, status};
             {
                 std::lock_guard lock(mutex_);
                 target_ = snapshot;

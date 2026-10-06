@@ -10,7 +10,7 @@ public sealed class NativeContractTests
     [Fact]
     public void Phase2MetadataLayoutsMatchTheNativeX64Contract()
     {
-        Assert.Equal(40, Marshal.SizeOf<NativeTarget>());
+        Assert.Equal(48, Marshal.SizeOf<NativeTarget>());
         Assert.Equal(24, Marshal.SizeOf<NativeInput>());
         Assert.Equal(32, Marshal.OffsetOf<NativeTarget>(nameof(NativeTarget.ProcessId)).ToInt32());
         Assert.Equal(16, Marshal.OffsetOf<NativeInput>(nameof(NativeInput.Source)).ToInt32());

@@ -78,6 +78,8 @@ typedef struct dictator_target {
     uint64_t checked_at;
     uint32_t process_id;
     uint32_t eligible;
+    uint32_t reason; // Metadata-only diagnostic stage; 0 means ready.
+    int32_t status; // HRESULT, never target text.
 } dictator_target;
 typedef struct dictator_input {
     uint64_t timestamp;
