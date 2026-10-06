@@ -214,9 +214,9 @@ than 400 ms. Native rendering stops immediately when a new invalid or changed
 target snapshot arrives; C# cancels its gesture on the next 20 ms dispatcher tick.
 No microphone, network request, insertion API or audio buffer is introduced.
 
-The native Widget/tooltip use WS_EX_NOACTIVATE and MA_NOACTIVATE, SWP_NOACTIVATE
+The native Widget uses WS_EX_NOACTIVATE and MA_NOACTIVATE, SWP_NOACTIVATE
 placement, and do not call SetForegroundWindow during ordinary interaction. Tools
-is the explicit exception that asks C# to activate Settings. A 270 by 56 DIP
+is the explicit exception that asks C# to activate Settings. A 270 by 65 DIP
 Widget scales with DPI and the five persisted zoom stops. Body dragging is kept
 only in native host memory, clamped to monitor work areas and retained through
 close/reopen. Default placement is bottom-center, raised by half the scaled height
@@ -230,16 +230,30 @@ so cross-monitor dragging retains DPI handling and never paints a speculative
 off-screen/taskbar-overlapping location. Display/setting/DPI changes re-clamp
 placement.
 
-The blue glass frame is painted with double-buffered, anti-aliased GDI+ on the
-existing non-activating HWND. GDI+ startup/shutdown follows native host ownership.
-Drawing and hit regions share the 270 by 56 coordinate layout: microphone left,
-waveform middle, Settings/Close right. The top transcript strip is an empty drag
-surface until real transcription arrives in Phase 4. Inactive microphones are
-always red and slashed; eligible quiet state has a cyan straight line, ineligible
-state a red straight line. Active preview has a green microphone and cyan bars.
-The Widget retains its blue palette in every theme; tooltips follow the theme.
+The Widget paints two glossy capsules with anti-aliased, double-buffered GDI+.
+Its HWND region is the union of two rounded regions, excluding the 4 DIP gap and
+rounded corners from painting and input. The desktop or underlying application
+is visible and receives pointer input through the gap. GDI+ follows host lifetime.
+Drawing and hit regions share the 270 by 65 DIP layout: 24 DIP text capsule, 4 DIP
+gap and 37 DIP controls capsule. Microphone is left, waveform middle, controls right.
+Inactive microphones remain red/slashed; the quiet line is cyan when eligible and
+red otherwise. Active Phase 2 waveform remains simulated until Phase 3.
 
-A separate non-activating tooltip computes its work-area-clamped position before
-showing, starts after 1000 ms in a hit region, and repaints contextual copy when
-eligibility or Talking changes. It draws real separators and the configured
-Hotkey. The active waveform is explicitly simulated until Phase 3.
+Hover instructions are blue single-line text inside the upper capsule after
+1000 ms, fading over 240 ms. Long hints scroll gently. No popup tooltip HWND is
+created. Region changes/leave/drag/press clear hints; Talking suppresses them.
+Hover instructions are exposed as the Widget accessibility name; live transcript
+text is never copied into window titles or diagnostics.
+
+An additive ABI 1 UI-thread `dictator_host_append_live_text` / managed
+`ResidentHost.AppendLiveText` bridge accepts future raw UTF-16 transcription
+deltas for the active target and presentation epoch (snapshotted at start),
+rejecting late text even when Talking restarts in the same field. It returns an error on inactive/stale targets or
+full queues, copies borrowed input, and retains at most 4096 code units in 128
+segments (2048 units per call). Off-screen segments are pruned. Appending preserves
+existing positions; motion is 64 DIP/s from right to left with white text, updated
+by the native 16 ms UI timer. Stop/focus loss/close/rebind clears the queue. Neither
+audio/provider operations nor transcript logging/persistence are introduced.
+Production Phase 2 supplies no text; only the owned test fixture exercises sample
+deltas. The user's "translated" label means speech-to-text in the spoken language,
+without subsequent formatting. Real transcription is still Phase 4.

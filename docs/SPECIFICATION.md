@@ -655,9 +655,12 @@ The Widget:
 
 ### 14.2 Controls and hit regions
 
-Use the user-supplied blue glass mock-up: rounded cyan/chrome frame, dark navy
-interior, a dark transcript strip above the control row, left circular microphone,
-cyan waveform in the middle, and circular Settings/Close controls on the right.
+Use the latest user-supplied mock-up: two separate glossy blue capsules with
+cyan/chrome rims and dark navy interiors, a text capsule above a control/waveform
+capsule, left circular microphone, cyan waveform in the middle, and circular
+Settings/Close controls on the right. The approximately 4 DIP gap is genuinely
+transparent and click-through: show the desktop/application behind it. Do not
+paint or simulate a desktop background in the gap.
 Keep the Widget itself compact; the mock-up desktop background is not part of it.
 The Widget uses this blue palette in all Settings themes.
 
@@ -702,14 +705,19 @@ Remove the old Preview → Finish → Complete cycle. Do not add “Listening pr
 
 ### 14.4 Streaming transcript area
 
-The top strip is reserved for real streaming text and stays empty in Phase 2.
-Do not render the mock-up example sentence as a live transcript.
-From Phase 4 onward the Widget dynamically presents raw streaming text while Talking.
+While Talking, the top capsule smoothly scrolls white live raw text from right
+to left like a news ticker. Append deltas without restarting or repeating the
+existing text. The user clarified that "translated" means speech-to-text in the
+spoken language, before formatting; no language translation is implied.
+Phase 2 supplies a bounded, session-checked presentation bridge for future STT
+deltas but no microphone/provider. In normal Phase 2 operation the top capsule
+is empty while Talking. Do not render the mock-up example as a live transcript.
+From Phase 4 onward real streaming transcription feeds this ticker.
 
 Desired behavior:
 
 - compact when only waveform/state is needed;
-- expand enough to show a small number of transcript lines when deltas arrive;
+- keep incoming deltas in a compact single-line ticker;
 - do not obscure a large portion of the target application;
 - retain raw transcript while processing if useful to reassure the user that work is continuing;
 - clearly distinguish errors from normal processing without becoming a modal surface;
@@ -719,7 +727,7 @@ Desired behavior:
 
 Use a compact design informed by the accepted prototype:
 
-- base size **270 by 56 DIP** at 1.000 zoom;
+- base size **270 by 65 DIP** at 1.000 zoom;
 - waveform/body width is compact, roughly 60% of the earlier prototype direction;
 - final dimensions may be tuned during Phase 2 acceptance, but do not drift back to a broad status panel.
 
@@ -764,22 +772,16 @@ Position rules:
 
 ### 14.8 Tooltips
 
-Hover delay: **1 second**.
+When not Talking, hover information appears **inside the top text capsule** in
+blue. Wait **1 second**, then fade in smoothly over approximately 240 ms. Moving
+between hit regions restarts the delay. Leaving, dragging or pressing a control
+clears the hint. Long information may scroll gently so all instructions fit.
+While Talking the strip belongs exclusively to white raw text; suppress hints.
 
-Provide separate tooltips for:
-
-- waveform/body;
-- microphone;
-- close;
-- tools.
-
-Moving between regions restarts the delay.
-
-Update visible tooltip content if cursor eligibility or Talking state changes.
-
-Position above the Widget where practical, otherwise within the work area. The tooltip must not initially flash at an incorrect position.
-
-The divider shown below represents a visual separator. Display the currently configured Hotkey, not a hard-coded string.
+Retain the contextual information for waveform/body, microphone, tools and close.
+Update visible information when cursor eligibility changes. Render the following
+copy as a single line, joining its lines/dividers with a spaced middle dot.
+Display the currently configured Hotkey. Do not create a separate popup tooltip.
 
 **Waveform area — valid cursor:**
 

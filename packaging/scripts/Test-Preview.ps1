@@ -43,10 +43,20 @@ function Request([string] $Command) {
     if (-not $process.WaitForExit(10000) -or $process.ExitCode -ne 0) { throw "Preview launcher failed: $Command" }
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Path $output) -and $timer.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 25 }
-    for ($retry = 0; $retry -lt 20; $retry++) {
-        try { $report = Get-Content $output -Raw | ConvertFrom-Json; break }
+    $report = $null
+    for ($retry = 0; $retry -lt 40; $retry++) {
+        try {
+            $candidate = Get-Content $output -Raw | ConvertFrom-Json
+            # ConvertFrom-Json accepts an empty file as null without throwing.
+            # Startup creates the report path before its write completes.
+            if ($null -ne $candidate -and $candidate.PSObject.Properties['status']) {
+                $report = $candidate; break
+            }
+            Start-Sleep -Milliseconds 25
+        }
         catch { Start-Sleep -Milliseconds 25 }
     }
+    if ($null -eq $report) { throw "No complete preview resident response for $Command." }
     if ($report.status -ne 'ok') { throw 'Preview resident response failed.' }
     return $report
 }

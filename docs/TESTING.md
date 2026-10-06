@@ -47,7 +47,7 @@ not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.2.2** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.2.3** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -110,19 +110,21 @@ the lifecycle evidence. The fixture executable is not shipped to users.
 ## Widget design refinement evidence
 
 The native interaction test captures the actual HWND paint path in ready, Talking
-and no-cursor states under `artifacts/test-results/widget`. It checks cyan/red
-quiet-line pixels with no vertical bars, taskbar clearance, left microphone input
+and no-cursor states, plus inline hints and a fixture-fed ticker, under `artifacts/test-results/widget`. It checks cyan/red
+quiet-line pixels with no vertical bars, taskbar clearance, blue/white text pixels, transparent-region/input-hole checks, left microphone input
 and right Settings/Close hit regions, in addition to existing focus/drag/zoom and
-ownership regressions. A window-procedure observer records every applied drag
+ownership regressions. The ticker contract test verifies elapsed-time motion,
+append continuity, Unicode, bounded character/segment storage, pruning, reset
+and the 1000 ms delay/240 ms fade curve. A window-procedure observer records every applied drag
 position against all four screen edges at every zoom stop, requiring one bounded
 move per update instead of an out-of-bounds move followed by correction. The user's Windows desktop acceptance confirmed Phase 2
 before this visual refinement; repeat appearance and taskbar placement below for
-v0.2.2, including an auto-hidden taskbar and secondary monitors.
+v0.2.3, including an auto-hidden taskbar and secondary monitors.
 
 ## Phase 2 manual Windows 11 acceptance
 
-1. On fresh startup check the rounded blue frame, left microphone, empty dark
-   transcript strip and right Settings/Close buttons. The inactive microphone is
+1. On fresh startup check the two glossy blue capsules with a real desktop-visible gap,
+   left microphone, top text strip and right Settings/Close buttons. The inactive microphone is
    red and slashed. With a valid cursor the waveform is a cyan straight line;
    without one it is a red straight line. Check additional clearance above the
    taskbar, including auto-hide. Focus Notepad and a browser text field. Tap the default Hotkey: green microphone
@@ -146,10 +148,13 @@ v0.2.2, including an auto-hidden taskbar and secondary monitors.
 6. On multiple monitors with mixed DPI and negative coordinates, drag, change all
    five zoom stops, change taskbar/work area, and disconnect a monitor. Confirm
    the complete Widget scales and stays within the available work area.
-7. Hover each hit region for one second and compare copy exactly with specification
-   section 14.8. Moving regions restarts the delay. Visible content updates on
-   eligibility/Talking changes; real divider, actual configured Hotkey, no position
-   flash, no focus theft. Check light, dark and System themes.
+7. Hover each hit region: the top strip stays empty for one second, then blue
+   contextual information fades in. Moving regions restarts the delay. Long hints
+   scroll to reveal the configured Hotkey. Eligibility updates visible hints.
+   Talking clears/suppresses hints; no popup window or focus theft. Confirm the
+   gap and rounded corners show the actual background and pass clicks through.
+   Check light, dark and System Settings themes. Real white raw text is Phase 4;
+   native fixture evidence exercises the ticker with clearly owned sample input.
 8. Rebind a free combination and a combination already registered by another app.
    Confirm conflicts are shown and the previous Hotkey/preferences survive. Test
    both UK and US layouts, including changing layouts while Dictator is resident.

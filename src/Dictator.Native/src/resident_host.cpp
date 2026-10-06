@@ -16,7 +16,7 @@
 #include "widget_painter.h"
 
 struct dictator_host {
-    HWND owner{}, widget{}, tooltip{};
+    HWND owner{}, widget{};
     HICON icon{};
     HHOOK keyboard{};
     ULONG_PTR graphics_token{};
@@ -27,7 +27,10 @@ struct dictator_host {
     bool layout_backslash{true};
     bool tray{}, key_down{}, dragging{}, positioned{}, dragged{}, placing{}, talking{};
     POINT drag_origin{}, window_origin{};
-    uint64_t target{}, hover_at{};
+    uint64_t target{}, hover_at{}, hint_at{}, text_epoch{};
+    wchar_t hint[768]{};
+    float hint_width{};
+    widget_design::ticker_text ticker;
     dictator_target current{};
     wchar_t hotkey[128]{L"Ctrl-Alt-\\"};
     std::unique_ptr<target_probe> probe;
@@ -37,7 +40,6 @@ constexpr UINT tray_message = WM_APP + 17;
 constexpr UINT target_message = WM_APP + 18;
 constexpr wchar_t owner_class[] = L"Dictator.Resident.1";
 constexpr wchar_t widget_class[] = L"Dictator.Widget.1";
-constexpr wchar_t tooltip_class[] = L"Dictator.Tooltip.2";
 thread_local dictator_host* input_host{};
 static_assert(sizeof(dictator_target) == 48);
 static_assert(sizeof(dictator_input) == 24);
@@ -46,12 +48,16 @@ uint64_t mouse_timestamp() noexcept {
     const auto now = GetTickCount64();
     return now - static_cast<DWORD>(static_cast<DWORD>(now) - static_cast<DWORD>(GetMessageTime()));
 }
-void hide_tooltip(dictator_host* h) noexcept { ShowWindow(h->tooltip, SW_HIDE); }
+void hide_tooltip(dictator_host* h) noexcept {
+    if (!h->hint[0]) return;
+    h->hint[0] = 0; h->hint_width = 0;
+    SetWindowTextW(h->widget, L"Dictator Widget"); InvalidateRect(h->widget, nullptr, FALSE);
+}
 void close_widget(dictator_host* h) noexcept {
     h->talking = false; h->target = 0; h->hover = -1; h->dragging = false; h->pressed_region = -1;
     if (h->probe) h->probe->cancel_inputs();
     if (GetCapture() == h->widget) ReleaseCapture();
-    hide_tooltip(h); ShowWindow(h->widget, SW_HIDE); h->events |= 32;
+    hide_tooltip(h); ++h->text_epoch; h->ticker.clear(GetTickCount64()); ShowWindow(h->widget, SW_HIDE); h->events |= 32;
 }
 HMONITOR relevant_monitor(dictator_host* h) noexcept {
     if (h->dragged) return MonitorFromWindow(h->widget, MONITOR_DEFAULTTONEAREST);
@@ -108,19 +114,12 @@ void place_widget(dictator_host* h, bool show, const POINT* drag_position = null
         x = std::clamp(x, static_cast<int>(work.left), static_cast<int>(work.right - width));
         y = std::clamp(y, static_cast<int>(work.top), static_cast<int>(work.bottom - height));
         SetWindowPos(h->widget, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | (show ? SWP_SHOWWINDOW : 0));
-        auto region = CreateRoundRectRgn(0, 0, width + 1, height + 1, static_cast<int>(24 * scale), static_cast<int>(24 * scale));
+        auto region = widget_design::window_region(width, height);
         if (region && !SetWindowRgn(h->widget, region, TRUE)) DeleteObject(region);
         h->positioned = true;
         InvalidateRect(h->widget, nullptr, FALSE);
     }
     h->placing = false;
-}
-bool dark_theme(const dictator_host* h) noexcept {
-    if (h->theme != 0) return h->theme == 2;
-    DWORD value = 1, size = sizeof(value);
-    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-        L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
-    return value == 0;
 }
 int hit_region(HWND hwnd, LPARAM point) noexcept {
     RECT r{}; GetClientRect(hwnd, &r);
@@ -141,83 +140,22 @@ tooltip_copy tooltip_text(dictator_host* h, wchar_t* binding, size_t capacity) n
     default: return {};
     }
 }
-HFONT widget_font(dictator_host* h, int size) noexcept {
-    return CreateFontW(-static_cast<int>(std::lround(size * h->zoom * GetDpiForWindow(h->widget) / 96.0)),
-        0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-}
 void show_tooltip(dictator_host* h) noexcept {
-    if (h->hover < 0 || !IsWindowVisible(h->widget) || h->dragging || h->pressed_region >= 0) { hide_tooltip(h); return; }
+    if (h->talking || h->hover < 0 || !IsWindowVisible(h->widget) || h->dragging || h->pressed_region >= 0) {
+        hide_tooltip(h); return;
+    }
     if (GetTickCount64() - h->hover_at < 1000) return;
-    wchar_t binding[160]{};
+    wchar_t binding[160]{}, content[768]{};
     const auto copy = tooltip_text(h, binding, std::size(binding));
-    wchar_t accessible[512]{};
     for (int i = 0; i < copy.count; ++i) {
-        if (i > 0) wcscat_s(accessible, L"\n");
-        if (i == copy.separator) wcscat_s(accessible, L"────────────────\n");
-        wcscat_s(accessible, copy.lines[i]);
+        if (i > 0) wcscat_s(content, L"   ·   ");
+        wcscat_s(content, copy.lines[i]);
     }
-    SetWindowTextW(h->tooltip, accessible);
-    auto dc = GetDC(h->tooltip);
-    auto font = widget_font(h, 12); auto old = SelectObject(dc, font);
-    int width{}, line_height{};
-    for (int i = 0; i < copy.count; ++i) {
-        SIZE size{}; GetTextExtentPoint32W(dc, copy.lines[i], static_cast<int>(wcslen(copy.lines[i])), &size);
-        width = std::max(width, static_cast<int>(size.cx)); line_height = std::max(line_height, static_cast<int>(size.cy));
-    }
-    SelectObject(dc, old); DeleteObject(font); ReleaseDC(h->tooltip, dc);
-    const int pad = std::max(8, line_height / 2), gap = pad;
-    int height = copy.count * (line_height + pad / 2) + pad * 2 + (copy.separator >= 0 ? gap : 0);
-    width += 2 * pad;
-    MONITORINFO monitor{sizeof(monitor)};
-    GetMonitorInfoW(MonitorFromWindow(h->widget, MONITOR_DEFAULTTONEAREST), &monitor);
-    const auto& work = monitor.rcWork;
-    width = std::min(width, static_cast<int>(work.right - work.left));
-    height = std::min(height, static_cast<int>(work.bottom - work.top));
-    RECT r{}; GetWindowRect(h->widget, &r);
-    int x = std::clamp(static_cast<int>(r.left + (r.right - r.left - width) / 2), static_cast<int>(work.left), static_cast<int>(work.right - width));
-    int y = r.top - height - gap;
-    if (y < work.top) y = r.bottom + gap;
-    y = std::clamp(y, static_cast<int>(work.top), std::max(static_cast<int>(work.top), static_cast<int>(work.bottom - height)));
-    // Compute final coordinates before first visibility: no tooltip origin flash.
-    SetWindowPos(h->tooltip, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    InvalidateRect(h->tooltip, nullptr, FALSE);
-}
-LRESULT CALLBACK tooltip_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexcept {
-    auto* h = reinterpret_cast<dictator_host*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-    if (message == WM_NCCREATE) {
-        h = static_cast<dictator_host*>(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams);
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(h));
-    }
-    if (!h) return DefWindowProcW(hwnd, message, wp, lp);
-    if (message == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
-    if (message == WM_NCHITTEST) return HTTRANSPARENT;
-    if (message == WM_ERASEBKGND) return 1;
-    if (message == WM_PAINT) {
-        PAINTSTRUCT paint{}; auto dc = BeginPaint(hwnd, &paint);
-        RECT r{}; GetClientRect(hwnd, &r);
-        const bool dark = dark_theme(h);
-        auto brush = CreateSolidBrush(dark ? RGB(36, 40, 48) : RGB(255, 255, 255));
-        FillRect(dc, &r, brush); DeleteObject(brush);
-        auto font = widget_font(h, 12); auto old = SelectObject(dc, font);
-        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, dark ? RGB(242, 244, 248) : RGB(30, 34, 42));
-        TEXTMETRICW metrics{}; GetTextMetricsW(dc, &metrics);
-        const int pad = std::max(8, static_cast<int>(metrics.tmHeight / 2));
-        int y = pad;
-        wchar_t binding[160]{}; const auto copy = tooltip_text(h, binding, std::size(binding));
-        for (int i = 0; i < copy.count; ++i) {
-            if (i == copy.separator) {
-                auto pen = CreatePen(PS_SOLID, 1, dark ? RGB(90, 96, 110) : RGB(210, 215, 225));
-                auto old_pen = SelectObject(dc, pen);
-                MoveToEx(dc, pad, y + pad / 2, nullptr); LineTo(dc, r.right - pad, y + pad / 2);
-                SelectObject(dc, old_pen); DeleteObject(pen); y += pad;
-            }
-            TextOutW(dc, pad, y, copy.lines[i], static_cast<int>(wcslen(copy.lines[i])));
-            y += metrics.tmHeight + pad / 2;
-        }
-        SelectObject(dc, old); DeleteObject(font); EndPaint(hwnd, &paint); return 0;
-    }
-    return DefWindowProcW(hwnd, message, wp, lp);
+    if (wcscmp(content, h->hint) == 0) return;
+    wcscpy_s(h->hint, content); h->hint_at = GetTickCount64();
+    h->hint_width = widget_design::measure_text(h->hint, static_cast<int>(wcslen(h->hint)));
+    // Expose hover instructions to accessibility clients, never live transcript text.
+    SetWindowTextW(h->widget, h->hint); InvalidateRect(h->widget, nullptr, FALSE);
 }
 uint32_t resolved_key(dictator_host* h) noexcept {
     if (!h->layout_backslash || h->key != 0xDC) return h->key;
@@ -273,9 +211,11 @@ void refresh_target(dictator_host* h) noexcept {
     }
     const bool changed = h->current.token != target.token || h->current.eligible != target.eligible;
     h->current = target;
-    if (h->talking && (!target.eligible || h->target != target.token)) { h->talking = false; h->target = 0; }
+    if (h->talking && (!target.eligible || h->target != target.token)) {
+        h->talking = false; h->target = 0; ++h->text_epoch; h->ticker.clear(now); hide_tooltip(h); h->hover_at = now;
+    }
     if (changed || h->talking) InvalidateRect(h->widget, nullptr, FALSE);
-    if (IsWindowVisible(h->tooltip)) show_tooltip(h);
+    show_tooltip(h);
 }
 HICON make_icon() noexcept {
     HMODULE module{};
@@ -301,6 +241,9 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
     if (message == WM_HOTKEY) return 0; // Reservation/conflict detection; hook supplies both edges.
     if (message == WM_TIMER && h->probe) {
         refresh_target(h); show_tooltip(h);
+        if (h->hint[0] && IsWindowVisible(h->widget) &&
+            (GetTickCount64() - h->hover_at < 1240 || h->hint_width > 252))
+            InvalidateRect(h->widget, nullptr, FALSE);
         const auto key = resolved_key(h);
         if (h->registered_key && !h->key_down && key != h->registered_key) {
             if (!reserve_hotkey(h, key)) { h->events |= 16; UnregisterHotKey(h->owner, h->hotkey_id); h->registered_key = 0; }
@@ -333,8 +276,16 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
 }
 void draw_widget(dictator_host* h, HWND hwnd, HDC destination) noexcept {
     RECT rect{}; GetClientRect(hwnd, &rect);
+    const auto now = GetTickCount64(); h->ticker.advance(now);
+    const auto elapsed = now - h->hover_at;
+    const float alpha = widget_design::hover_opacity(elapsed);
+    float hint_x = 9;
+    if (h->hint_width > 252 && now - h->hint_at > 1200) {
+        const auto distance = static_cast<float>(now - h->hint_at - 1200) * .024f;
+        hint_x -= std::fmod(distance, h->hint_width + 40);
+    }
     widget_design::paint(destination, rect.right, rect.bottom, h->talking, h->current.eligible != 0,
-        h->hover, h->pressed_region, GetTickCount64());
+        h->hover, h->pressed_region, now, h->ticker, h->hint, alpha, hint_x);
 }
 void paint_widget(dictator_host* h, HWND hwnd) noexcept {
     PAINTSTRUCT paint{}; auto surface = BeginPaint(hwnd, &paint);
@@ -403,26 +354,22 @@ dictator_result DICTATOR_CALL dictator_host_create(uint32_t abi, dictator_host**
     *output = nullptr;
     if (abi != DICTATOR_ABI_VERSION) return DICTATOR_ABI_MISMATCH;
     if (input_host) return DICTATOR_PLATFORM_ERROR;
-    auto* h = new (std::nothrow) dictator_host;
-    if (!h) return DICTATOR_OUT_OF_MEMORY;
+    dictator_host* h{};
+    try { h = new dictator_host; } catch (...) { return DICTATOR_OUT_OF_MEMORY; }
     Gdiplus::GdiplusStartupInput graphics;
     if (Gdiplus::GdiplusStartup(&h->graphics_token, &graphics, nullptr) != Gdiplus::Ok) { delete h; return DICTATOR_PLATFORM_ERROR; }
     auto instance = GetModuleHandleW(nullptr);
     WNDCLASSW owner{}; owner.lpfnWndProc = owner_proc; owner.hInstance = instance; owner.lpszClassName = owner_class;
     WNDCLASSW widget{}; widget.lpfnWndProc = widget_proc; widget.hInstance = instance; widget.lpszClassName = widget_class;
     widget.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    WNDCLASSW tooltip{}; tooltip.lpfnWndProc = tooltip_proc; tooltip.hInstance = instance; tooltip.lpszClassName = tooltip_class;
     if ((!RegisterClassW(&owner) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) ||
-        (!RegisterClassW(&widget) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) ||
-        (!RegisterClassW(&tooltip) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)) { Gdiplus::GdiplusShutdown(h->graphics_token); delete h; return DICTATOR_PLATFORM_ERROR; }
+        (!RegisterClassW(&widget) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)) { Gdiplus::GdiplusShutdown(h->graphics_token); delete h; return DICTATOR_PLATFORM_ERROR; }
     h->owner = CreateWindowExW(WS_EX_TOOLWINDOW, owner_class, L"Dictator Resident", WS_POPUP,
         0, 0, 0, 0, nullptr, nullptr, instance, h);
     h->widget = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
         widget_class, L"Dictator Widget", WS_POPUP, 0, 0, widget_design::width, widget_design::height, h->owner, nullptr, instance, h);
-    h->tooltip = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
-        tooltip_class, L"Dictator Widget Tooltip", WS_POPUP | WS_BORDER, 0, 0, 0, 0, h->owner, nullptr, instance, h);
     h->icon = make_icon();
-    if (h->owner && h->widget && h->tooltip && h->icon) add_tray(h);
+    if (h->owner && h->widget && h->icon) add_tray(h);
     if (!h->tray) { dictator_host_destroy(h); return DICTATOR_PLATFORM_ERROR; }
     try { h->probe = std::make_unique<target_probe>(h->owner); }
     catch (...) { dictator_host_destroy(h); return DICTATOR_PLATFORM_ERROR; }
@@ -430,7 +377,7 @@ dictator_result DICTATOR_CALL dictator_host_create(uint32_t abi, dictator_host**
     HMODULE module{};
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, owner_class, &module);
     h->keyboard = SetWindowsHookExW(WH_KEYBOARD_LL, keyboard_proc, module, 0);
-    if (!h->keyboard || !SetTimer(h->owner, 1, 40, nullptr)) { dictator_host_destroy(h); return DICTATOR_PLATFORM_ERROR; }
+    if (!h->keyboard || !SetTimer(h->owner, 1, 16, nullptr)) { dictator_host_destroy(h); return DICTATOR_PLATFORM_ERROR; }
     *output = h; return DICTATOR_OK;
 }
 void DICTATOR_CALL dictator_host_destroy(dictator_host* h) noexcept {
@@ -441,7 +388,6 @@ void DICTATOR_CALL dictator_host_destroy(dictator_host* h) noexcept {
     h->probe.reset();
     NOTIFYICONDATAW info{}; info.cbSize = sizeof(info); info.hWnd = h->owner; info.uID = 1;
     if (h->tray) Shell_NotifyIconW(NIM_DELETE, &info);
-    if (h->tooltip) DestroyWindow(h->tooltip);
     if (h->widget) DestroyWindow(h->widget);
     if (h->owner) DestroyWindow(h->owner);
     if (h->icon) DestroyIcon(h->icon);
@@ -479,9 +425,10 @@ dictator_result DICTATOR_CALL dictator_host_bind_hotkey(dictator_host* h, uint32
         return DICTATOR_PLATFORM_ERROR;
     }
     h->key_down = false; h->talking = false; h->target = 0; h->events |= 32;
+    ++h->text_epoch; h->ticker.clear(GetTickCount64()); hide_tooltip(h);
     h->probe->cancel_inputs();
     wcsncpy_s(h->hotkey, reinterpret_cast<const wchar_t*>(display), _TRUNCATE);
-    if (IsWindowVisible(h->tooltip)) show_tooltip(h);
+    show_tooltip(h);
     return DICTATOR_OK;
 }
 dictator_result DICTATOR_CALL dictator_host_target(dictator_host* h, dictator_target* output) noexcept {
@@ -499,12 +446,35 @@ dictator_result DICTATOR_CALL dictator_host_preview(dictator_host* h, uint64_t t
     h->talking = target && h->current.eligible && target == h->current.token;
     h->target = h->talking ? target : 0;
     if (before != h->talking) {
+        ++h->text_epoch;
+        const auto now = GetTickCount64(); h->ticker.clear(now); hide_tooltip(h); h->hover_at = now;
         InvalidateRect(h->widget, nullptr, FALSE);
-        if (IsWindowVisible(h->tooltip)) show_tooltip(h);
     }
     return DICTATOR_OK;
 }
 uintptr_t DICTATOR_CALL dictator_host_widget_handle(dictator_host* h) noexcept {
     return correct_thread(h) ? reinterpret_cast<uintptr_t>(h->widget) : 0;
+}
+uint64_t DICTATOR_CALL dictator_host_live_text_session(dictator_host* h) noexcept {
+    return correct_thread(h) && h->talking ? h->text_epoch : 0;
+}
+dictator_result DICTATOR_CALL dictator_host_append_live_text(dictator_host* h, uint64_t target, uint64_t session,
+    const uint16_t* input, uint32_t count) noexcept {
+    if (!correct_thread(h)) return h ? DICTATOR_WRONG_THREAD : DICTATOR_INVALID_ARGUMENT;
+    if (!input || count == 0 || count > 2048) return DICTATOR_INVALID_ARGUMENT;
+    refresh_target(h);
+    if (!h->talking || !target || target != h->target || target != h->current.token ||
+        !session || session != h->text_epoch) return DICTATOR_INVALID_ARGUMENT;
+    try {
+        std::wstring text(reinterpret_cast<const wchar_t*>(input), count);
+        for (auto& character : text) {
+            if (!character) return DICTATOR_INVALID_ARGUMENT;
+            if (character == L'\r' || character == L'\n' || character == L'\t') character = L' ';
+        }
+        const auto measured = widget_design::measure_text(text.data(), static_cast<int>(text.size()));
+        if (!(measured > 0)) return DICTATOR_PLATFORM_ERROR;
+        if (!h->ticker.append(std::move(text), measured, GetTickCount64())) return DICTATOR_BUFFER_TOO_SMALL;
+        InvalidateRect(h->widget, nullptr, FALSE); return DICTATOR_OK;
+    } catch (...) { return DICTATOR_OUT_OF_MEMORY; }
 }
 uint32_t DICTATOR_CALL dictator_host_tray_ready(dictator_host* h) noexcept { return correct_thread(h) && h->tray ? 1u : 0u; }

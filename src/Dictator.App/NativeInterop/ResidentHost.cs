@@ -24,6 +24,10 @@ internal sealed class ResidentHost : IDisposable
     }
     internal bool TryInput(out NativeInput input) => NativeMethods.HostInput(handle, out input) != 0;
     internal void SetPreview(ulong target) => NativeMethods.EnsureSuccess(NativeMethods.HostPreview(handle, target));
+    // Future streaming provider supplies raw deltas on the UI thread. No mock text.
+    internal ulong LiveTextSession => NativeMethods.HostLiveTextSession(handle);
+    internal NativeResult AppendLiveText(ulong target, ulong session, string text) =>
+        NativeMethods.HostAppendLiveText(handle, target, session, text, checked((uint)text.Length));
     internal void SetWidget(bool visible, Preferences preferences) => NativeMethods.EnsureSuccess(
         NativeMethods.HostSetWidget(handle, visible ? 1u : 0u, preferences.WidgetZoom, (uint)preferences.Theme));
     public void Dispose()
@@ -67,6 +71,12 @@ internal static partial class NativeMethods
     [LibraryImport(Library, EntryPoint = "dictator_host_preview")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeResult HostPreview(nint handle, ulong target);
+    [LibraryImport(Library, EntryPoint = "dictator_host_append_live_text", StringMarshalling = StringMarshalling.Utf16)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial NativeResult HostAppendLiveText(nint handle, ulong target, ulong session, string text, uint count);
+    [LibraryImport(Library, EntryPoint = "dictator_host_live_text_session")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial ulong HostLiveTextSession(nint handle);
     [LibraryImport(Library, EntryPoint = "dictator_host_create")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeResult HostCreate(uint abi, out nint handle);

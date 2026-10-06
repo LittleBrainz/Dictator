@@ -4,9 +4,15 @@ This is a fresh implementation of Dictator, not a reconstruction of the deleted
 C++ prototype. Read `docs/SPECIFICATION.md` and the requested phase. Later explicit
 requirements override generic framework conventions. Phase 0 passed Windows CI and
 the user accepted the staged artifact. The user accepted Phases 1 and 2. The current scope is the user-requested Widget
-design refinement before Phase 3. Keep the blue glass design, left microphone,
-right Settings/Close controls, red/slashed inactive microphone, cyan quiet line
-with an eligible cursor, and red quiet line without one.
+design refinement before Phase 3. Keep the two glossy blue capsules (270 x 65
+DIP) separated by a real desktop-visible, click-through gap. The upper strip
+shows white raw transcription scrolling right-to-left while Talking; off-state
+hover information fades in blue after one second, without a separate tooltip
+window. Raw text means speech-to-text in the spoken language, before formatting.
+Keep the left microphone, right Settings/Close controls, red/slashed inactive
+microphone, cyan quiet line with an eligible cursor, and red quiet line without
+one. Phase 2 has no real transcription; the live-text bridge accepts future
+provider deltas, and normal operation never injects sample text.
 
 ## Platform and architecture
 

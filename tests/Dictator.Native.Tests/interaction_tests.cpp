@@ -106,11 +106,11 @@ bool capture(HWND widget, const wchar_t* name, bool quiet, bool eligible) {
     GdiFlush();
     COLORREF center{};
     // Sample across the antialiased line rather than assuming a pixel-center phase.
-    for (int y = r.bottom * 35 / 56; y <= r.bottom * 38 / 56; ++y) {
+    for (int y = r.bottom * 45 / 65; y <= r.bottom * 48 / 65; ++y) {
         const auto pixel = GetPixel(dc, r.right * 128 / 270, y);
         if (eligible ? GetGValue(pixel) > GetGValue(center) : GetRValue(pixel) > GetRValue(center)) center = pixel;
     }
-    const auto above = GetPixel(dc, r.right * 128 / 270, r.bottom * 28 / 56);
+    const auto above = GetPixel(dc, r.right * 128 / 270, r.bottom * 37 / 65);
     bool ok = !quiet || (eligible ? GetGValue(center) > 110 && GetBValue(center) > 160 :
         GetRValue(center) > 150 && GetGValue(center) < 120);
     // A quiet waveform must remain a single horizontal line, with no vertical bars.
@@ -119,12 +119,34 @@ bool capture(HWND widget, const wchar_t* name, bool quiet, bool eligible) {
     if (GetEnvironmentVariableW(L"DICTATOR_WIDGET_EVIDENCE", folder, 32768)) {
         std::filesystem::create_directories(folder);
         const auto path = std::filesystem::path(folder) / (std::wstring(name) + L".png");
-        Gdiplus::Bitmap image(bitmap, nullptr);
+        Gdiplus::Bitmap source(bitmap, nullptr);
+        Gdiplus::Bitmap image(r.right, r.bottom, PixelFormat32bppARGB);
+        { Gdiplus::Graphics copy(&image); copy.DrawImage(&source, 0, 0); }
+        const auto shape = CreateRectRgn(0, 0, 0, 0); GetWindowRgn(widget, shape);
+        for (int y = 0; y < r.bottom; ++y) for (int x = 0; x < r.right; ++x)
+            if (!PtInRegion(shape, x, y)) image.SetPixel(x, y, Gdiplus::Color(0, 0, 0, 0));
+        DeleteObject(shape);
         const CLSID png{0x557cf406, 0x1a04, 0x11d3, {0x9a, 0x73, 0, 0, 0xf8, 0x1e, 0xf3, 0x2e}};
         ok = image.Save(path.c_str(), &png, nullptr) == Gdiplus::Ok && ok;
     }
     SelectObject(dc, old); DeleteObject(bitmap); DeleteDC(dc); ReleaseDC(widget, screen);
     return ok;
+}
+int text_ink(HWND widget, bool blue) {
+    RECT r{}; GetClientRect(widget, &r);
+    const auto screen = GetDC(widget), dc = CreateCompatibleDC(screen);
+    const auto bitmap = CreateCompatibleBitmap(screen, r.right, r.bottom);
+    const auto old = SelectObject(dc, bitmap);
+    SendMessageW(widget, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(dc), PRF_CLIENT); GdiFlush();
+    int count{};
+    for (int y = r.bottom * 6 / 65; y < r.bottom * 19 / 65; ++y)
+        for (int x = r.right * 20 / 270; x < r.right * 250 / 270; ++x) {
+            const auto color = GetPixel(dc, x, y);
+            if (blue ? GetRValue(color) < 130 && GetGValue(color) > 100 && GetBValue(color) > 160 :
+                GetRValue(color) > 170 && GetGValue(color) > 170 && GetBValue(color) > 170) ++count;
+        }
+    SelectObject(dc, old); DeleteObject(bitmap); DeleteDC(dc); ReleaseDC(widget, screen);
+    return count;
 }
 struct session {
     PROCESS_INFORMATION child{};
@@ -283,39 +305,70 @@ int wmain(int argc, wchar_t** argv) {
     RECT reopened{}; GetWindowRect(widget, &reopened);
     CHECK(reopened.left == dragged.left && reopened.top == dragged.top);
     CHECK(GetForegroundWindow() == target && SendMessageW(target, WM_APP + 10, 0, 0) == 1);
-    // One-second region delay, exact contextual copy and live eligibility updates.
-    const auto tooltip = FindWindowW(L"Dictator.Tooltip.2", nullptr);
-    CHECK(tooltip && (GetWindowLongPtrW(tooltip, GWL_EXSTYLE) & WS_EX_NOACTIVATE));
+    // Real desktop-visible gap; its points are excluded from the HWND and hit testing.
+    RECT client{}; GetClientRect(widget, &client);
+    const auto shape = CreateRectRgn(0, 0, 0, 0);
+    CHECK(GetWindowRgn(widget, shape) != ERROR);
+    CHECK(PtInRegion(shape, client.right / 2, client.bottom * 12 / 65));
+    CHECK(PtInRegion(shape, client.right / 2, client.bottom * 47 / 65));
+    CHECK(!PtInRegion(shape, client.right / 2, client.bottom * 26 / 65));
+    DeleteObject(shape);
+    const POINT gap{reopened.left + client.right / 2, reopened.top + client.bottom * 26 / 65};
+    CHECK(WindowFromPoint(gap) != widget);
+    CHECK(!FindWindowW(L"Dictator.Tooltip.2", nullptr)); // Hover hints live in the top capsule.
+    // One-second delay, blue fade-in, contextual copy and live eligibility updates.
     SetCursorPos(reopened.left + 10, reopened.top + 10);
     SendMessageW(widget, WM_MOUSEMOVE, 0, MAKELPARAM(10, 10));
     const auto early = GetTickCount64() + 900;
     CHECK(until([&] { return GetTickCount64() >= early; }, 1500));
-    CHECK(!IsWindowVisible(tooltip));
-    CHECK(until([&] { return IsWindowVisible(tooltip) != FALSE; }));
-    wchar_t copy[512]{}; GetWindowTextW(tooltip, copy, 512);
-    CHECK(wcscmp(copy, L"Ready to Insert Text\n────────────────\nHold to Drag Widget") == 0);
+    wchar_t copy[768]{}; GetWindowTextW(widget, copy, 768);
+    CHECK(wcscmp(copy, L"Dictator Widget") == 0);
+    CHECK(until([&] {
+        GetWindowTextW(widget, copy, 768);
+        return wcscmp(copy, L"Ready to Insert Text   ·   Hold to Drag Widget") == 0;
+    }));
+    const auto faded = GetTickCount64() + 280;
+    CHECK(until([&] { return GetTickCount64() >= faded; }, 1000));
+    CHECK(capture(widget, L"hover-ready", true, true));
+    CHECK(text_ink(widget, true) > 30);
     SendMessageW(target, WM_APP + 2, 0, 0);
     CHECK(until([&] {
-        GetWindowTextW(tooltip, copy, 512);
-        return wcscmp(copy, L"No Text Insertion Cursor\n────────────────\nHold to Drag Widget") == 0;
+        GetWindowTextW(widget, copy, 768);
+        return wcscmp(copy, L"No Text Insertion Cursor   ·   Hold to Drag Widget") == 0;
     }));
-    CHECK(IsWindowVisible(tooltip) && GetForegroundWindow() == target);
+    CHECK(GetForegroundWindow() == target);
     SendMessageW(target, WM_APP + 1, 0, 0);
     CHECK(until([&] { return snapshot().eligible != 0; }));
     // Microphone edges remain source-specific and never activate the Widget.
-    RECT client{}; GetClientRect(widget, &client);
-    const auto point = MAKELPARAM(client.right * 25 / 270, client.bottom * 37 / 56);
+    const auto point = MAKELPARAM(client.right * 20 / 270, client.bottom * 47 / 65);
     SetCursorPos(reopened.left + GET_X_LPARAM(point), reopened.top + GET_Y_LPARAM(point));
     SendMessageW(widget, WM_MOUSEMOVE, 0, point);
-    CHECK(!IsWindowVisible(tooltip));
-    CHECK(until([&] { return IsWindowVisible(tooltip) != FALSE; }));
-    GetWindowTextW(tooltip, copy, 512);
-    CHECK(wcscmp(copy, L"Click to Start Talking\nHold to Talk - Release to Stop\n────────────────\nHotkey: Ctrl-Alt-\\") == 0);
-    CHECK(dictator_host_preview(host, snapshot().token) == DICTATOR_OK);
+    GetWindowTextW(widget, copy, 768); CHECK(wcscmp(copy, L"Dictator Widget") == 0);
     CHECK(until([&] {
-        GetWindowTextW(tooltip, copy, 512);
-        return wcscmp(copy, L"Click to Stop Talking\n────────────────\nHotkey: Ctrl-Alt-\\") == 0;
+        GetWindowTextW(widget, copy, 768);
+        return wcscmp(copy, L"Click to Start Talking   ·   Hold to Talk - Release to Stop   ·   Hotkey: Ctrl-Alt-\\") == 0;
     }));
+    CHECK(dictator_host_preview(host, snapshot().token) == DICTATOR_OK);
+    GetWindowTextW(widget, copy, 768); CHECK(wcscmp(copy, L"Dictator Widget") == 0);
+    CHECK(text_ink(widget, false) == 0 && text_ink(widget, true) == 0);
+    const wchar_t raw[] = L"Raw speech-to-text scrolls smoothly from right to left. ";
+    const auto raw_input = reinterpret_cast<const uint16_t*>(raw);
+    const auto text_session = dictator_host_live_text_session(host); CHECK(text_session != 0);
+    CHECK(dictator_host_append_live_text(host, snapshot().token + 1, text_session, raw_input, static_cast<uint32_t>(wcslen(raw))) == DICTATOR_INVALID_ARGUMENT);
+    CHECK(dictator_host_append_live_text(host, snapshot().token, text_session, raw_input, static_cast<uint32_t>(wcslen(raw))) == DICTATOR_OK);
+    const auto scroll = GetTickCount64() + 750;
+    CHECK(until([&] { return GetTickCount64() >= scroll; }, 1500));
+    CHECK(capture(widget, L"ticker", false, true));
+    CHECK(text_ink(widget, false) > 10);
+    CHECK(dictator_host_append_live_text(host, snapshot().token, text_session, raw_input, static_cast<uint32_t>(wcslen(raw))) == DICTATOR_OK);
+    GetWindowTextW(widget, copy, 768); CHECK(wcscmp(copy, L"Dictator Widget") == 0); // No transcript in window titles.
+    CHECK(dictator_host_preview(host, 0) == DICTATOR_OK);
+    CHECK(text_ink(widget, false) == 0 && dictator_host_live_text_session(host) == 0);
+    CHECK(dictator_host_append_live_text(host, snapshot().token, text_session, raw_input, static_cast<uint32_t>(wcslen(raw))) == DICTATOR_INVALID_ARGUMENT);
+    CHECK(dictator_host_preview(host, snapshot().token) == DICTATOR_OK);
+    CHECK(dictator_host_live_text_session(host) != text_session);
+    CHECK(dictator_host_append_live_text(host, snapshot().token, text_session, raw_input, static_cast<uint32_t>(wcslen(raw))) == DICTATOR_INVALID_ARGUMENT);
+    CHECK(text_ink(widget, false) == 0);
     CHECK(dictator_host_preview(host, 0) == DICTATOR_OK);
     SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, point);
     CHECK(until([&] { return dictator_host_input(host, &pressed) != 0; }));
@@ -329,17 +382,17 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(ReleaseCapture());
     CHECK(until([&] { return dictator_host_input(host, &released) != 0; }));
     CHECK(released.source == 2 && released.down == 2);
-    const auto tools_point = MAKELPARAM(client.right * 229 / 270, client.bottom * 37 / 56);
+    const auto tools_point = MAKELPARAM(client.right * 229 / 270, client.bottom * 47 / 65);
     dictator_host_poll_events(host);
     SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, tools_point);
     SendMessageW(widget, WM_LBUTTONUP, 0, tools_point);
     CHECK(dictator_host_poll_events(host) == 2);
-    const auto close_point = MAKELPARAM(client.right * 253 / 270, client.bottom * 37 / 56);
+    const auto close_point = MAKELPARAM(client.right * 253 / 270, client.bottom * 47 / 65);
     SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, close_point);
     SendMessageW(widget, WM_LBUTTONUP, 0, close_point);
     CHECK(!IsWindowVisible(widget) && dictator_host_poll_events(host) == 32);
     CHECK(GetForegroundWindow() == target);
     CHECK(SendMessageW(widget, WM_MOUSEACTIVATE, 0, 0) == MA_NOACTIVATE);
     SetCursorPos(cursor.x, cursor.y);
-    std::cout << "Editable/read-only/disabled/non-text metadata; real global input, UK/US backslash, repeat, modifier release, Escape passthrough, unchanged target text/focus, recovery, drag without transient out-of-bounds moves at every zoom, tooltip delay/copy/live update and microphone edges passed.\n";
+    std::cout << "Editable/read-only/disabled/non-text metadata; real global input, UK/US backslash, repeat, modifier release, Escape passthrough, unchanged target text/focus, recovery, drag without transient out-of-bounds moves at every zoom, transparent gap, inline hint delay/fade/copy/live update and session-bound raw ticker and microphone edges passed.\n";
 }
