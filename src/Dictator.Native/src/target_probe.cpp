@@ -108,11 +108,11 @@ target_probe::~target_probe() {
 void target_probe::input(uint32_t source, uint32_t down, uint64_t timestamp) noexcept {
     try {
         std::lock_guard lock(mutex_);
-        if (requests_.size() >= 64) { ++epoch_; requests_.clear(); inputs_.clear(); target_ = {}; }
+        if (requests_.size() >= 64) { ++epoch_; requests_.clear(); inputs_.clear(); target_ = {}; eligible_token_.store(0, std::memory_order_release); }
         else requests_.push_back({timestamp, 0, source, down});
         wake_.notify_one();
     } catch (...) {
-        std::lock_guard lock(mutex_); ++epoch_; requests_.clear(); inputs_.clear(); target_ = {};
+        std::lock_guard lock(mutex_); ++epoch_; requests_.clear(); inputs_.clear(); target_ = {}; eligible_token_.store(0, std::memory_order_release);
     }
 }
 dictator_target target_probe::snapshot() noexcept { std::lock_guard lock(mutex_); return target_; }
@@ -171,17 +171,17 @@ void target_probe::run() noexcept {
                 reinterpret_cast<uintptr_t>(current.focus), GetTickCount64(), current.process, eligible ? 1u : 0u, reason, status};
             {
                 std::lock_guard lock(mutex_);
-                target_ = snapshot;
+                target_ = snapshot; checked_at_.store(snapshot.checked_at, std::memory_order_release); eligible_token_.store(snapshot.token, std::memory_order_release);
                 if (has_input && epoch == epoch_) {
                     input.target = snapshot.token;
-                    if (inputs_.size() >= 64) { ++epoch_; requests_.clear(); inputs_.clear(); target_ = {}; }
+                    if (inputs_.size() >= 64) { ++epoch_; requests_.clear(); inputs_.clear(); target_ = {}; eligible_token_.store(0, std::memory_order_release); }
                     else inputs_.push_back(input);
                 }
             }
             PostMessageW(notification_, target_message, 0, 0);
         }
     } catch (...) {
-        std::lock_guard lock(mutex_); target_ = {}; inputs_.clear();
+        std::lock_guard lock(mutex_); target_ = {}; eligible_token_.store(0, std::memory_order_release); inputs_.clear();
     }
     if (SUCCEEDED(initialized)) CoUninitialize();
 }

@@ -33,12 +33,15 @@ public sealed record Preferences
     public AppTheme Theme { get; init; } = AppTheme.System;
     public HotkeyPreference Hotkey { get; init; } = new();
     public double WidgetZoom { get; init; } = 1.000;
+    public string MicrophoneId { get; init; } = ""; // Empty follows Windows' default input.
     public void Validate()
     {
         if (SchemaVersion != CurrentSchema) throw new InvalidDataException("Unsupported settings schema. The existing file has been preserved.");
         if (!Enum.IsDefined(Theme) || Hotkey is null || !ZoomFactors.Contains(WidgetZoom))
             throw new InvalidDataException("Invalid settings values. The existing file has been preserved.");
         Hotkey.Validate();
+        if (MicrophoneId is null || MicrophoneId.Length > 511 || MicrophoneId.Contains('\0'))
+            throw new InvalidDataException("Invalid microphone identity. The existing file has been preserved.");
     }
 }
 

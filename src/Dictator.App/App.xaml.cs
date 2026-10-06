@@ -16,6 +16,11 @@ public partial class App : Application
     private readonly Stopwatch managedTimer;
     private Views.MainWindow? settings;
     private ResidentHost? host;
+    private AudioBridge? audio;
+    private bool refreshingMicrophones;
+    private bool microphonesLoaded;
+    internal string? AudioError { get; private set; }
+    internal IReadOnlyList<MicrophoneChoice> Microphones { get; private set; } = [new("", "Windows default microphone")];
     private DispatcherTimer? events;
     private bool stopping;
     private double managedReadyMs;
@@ -43,7 +48,10 @@ public partial class App : Application
         Provider connection: not configured
         Current settings error: {SettingsError ?? "none"}
         Hotkey: {Preferences.Hotkey.Display}; registration: {HotkeyError ?? "ready"}
-        Widget mode: simulated interaction preview (no audio capture)
+        Widget mode: real microphone capture (transcription not yet configured)
+        Audio state: {audio?.Snapshot.State.ToString() ?? "unavailable"}; source sample rate: {audio?.Snapshot.SampleRate ?? 0}
+        Captured frames: {audio?.Snapshot.CapturedFrames ?? 0}; dropped frames: {audio?.Snapshot.DroppedFrames ?? 0}
+        Microphone error: {AudioError ?? "none"}
         Recent sanitized errors: {(recentErrors.Count == 0 ? "none" : string.Join(Environment.NewLine, recentErrors))}
         """;
 
@@ -79,6 +87,7 @@ public partial class App : Application
             return;
         }
         host = new ResidentHost();
+        ConfigureMicrophone();
         if (!host.BindHotkey(Preferences.Hotkey)) HotkeyError = "The Hotkey is already in use or could not be registered. Choose another combination.";
         OpenWidget();
         managedReadyMs = managedTimer.Elapsed.TotalMilliseconds;
@@ -97,6 +106,11 @@ public partial class App : Application
                 settings?.RefreshPreferences();
             }
             if ((pending & 32) != 0) preview.Cancel();
+            if ((pending & 64) != 0) {
+                AudioError = DescribeAudioError(audio?.Snapshot.Error ?? 5);
+                settings?.RefreshPreferences();
+            }
+            if ((pending & 128) != 0) _ = RefreshMicrophonesAsync();
             if (!stopping && host is not null)
             {
                 var target = host.Target;
@@ -110,13 +124,52 @@ public partial class App : Application
                     else preview.Release((PreviewInput)input.Source, input.Timestamp);
                 }
                 host.SetPreview(preview.Talking ? preview.Target : 0);
+                if (audio is null && preview.Talking) { preview.Cancel(); host.SetPreview(0); }
+                if (audio?.Snapshot.State == 2 && AudioError is not null) { AudioError = null; settings?.RefreshPreferences(); }
             }
         };
         events.Start();
+        _ = RefreshMicrophonesAsync();
         ResidentReady.TrySetResult(true);
         if (options.ReportPath is not null) File.WriteAllText(options.ReportPath, Snapshot());
     }
     internal void OpenWidget() { if (!stopping) host?.SetWidget(true, Preferences); }
+    private void ConfigureMicrophone()
+    {
+        if (host is null) return;
+        try {
+            host.ConfigureAudio(Preferences.MicrophoneId);
+            audio ??= new AudioBridge(host.AudioHandle);
+            AudioError = null;
+        } catch (InvalidOperationException) {
+            AudioError = "Microphone capture could not initialize. Restart Dictator and check Windows audio services.";
+        }
+    }
+    internal async Task RefreshMicrophonesAsync()
+    {
+        if (stopping || refreshingMicrophones || audio is null) return;
+        refreshingMicrophones = true;
+        try {
+            var found = await audio.DevicesAsync();
+            if (stopping) return;
+            var choices = found.ToList();
+            if (Preferences.MicrophoneId.Length != 0 && !choices.Any(x => x.Id == Preferences.MicrophoneId))
+                choices.Add(new(Preferences.MicrophoneId, "Unavailable microphone (reconnect or select another)"));
+            Microphones = choices; microphonesLoaded = true;
+        } catch (InvalidOperationException) {
+            if (!stopping) { AudioError = "The microphone list could not be loaded. Check Windows audio services, then refresh the list."; microphonesLoaded = true; }
+        } finally {
+            refreshingMicrophones = false;
+            if (!stopping) settings?.RefreshPreferences();
+        }
+    }
+    private static string DescribeAudioError(uint error) => error switch {
+        1 => "No microphone is available. Connect one or choose an available microphone in Speech settings.",
+        2 => "Microphone access was denied. Enable microphone access for desktop apps in Windows privacy settings.",
+        3 => "The microphone changed or disconnected. Check the selection in Speech settings, then start Talking again.",
+        4 => "This microphone's audio format is not supported. Choose another microphone or change its Windows audio format.",
+        _ => "Microphone capture could not start or stopped unexpectedly. Check Windows audio services and the microphone selection."
+    };
     private void OpenSettings()
     {
         if (stopping || settings is null) return;
@@ -141,8 +194,10 @@ public partial class App : Application
                 }
                 rebound = true;
             }
+            var microphoneChanged = candidate.MicrophoneId != Preferences.MicrophoneId;
             Store.Save(candidate);
             Preferences = candidate;
+            if (microphoneChanged) { preview.Cancel(); ConfigureMicrophone(); _ = RefreshMicrophonesAsync(); }
             if (rebound) { HotkeyError = null; preview.Cancel(); }
             SettingsError = Store.Error;
             if (host is not null) host.SetWidget(IsWindowVisible(host.WidgetHandle) != 0, Preferences);
@@ -201,6 +256,8 @@ public partial class App : Application
                         case "set-preferences": Save(Preferences with { Theme = AppTheme.Dark, WidgetZoom = 1.155, Hotkey = new(6, 0x77) }); break;
                         case "startup-on": ChangeStartup(true); break;
                         case "startup-off": ChangeStartup(false); break;
+                        case "microphone-missing": Save(Preferences with { MicrophoneId = "Dictator.Missing.Test.Microphone" }); break;
+                        case "microphone-default": Save(Preferences with { MicrophoneId = "" }); break;
                         case "restart": ScheduleShutdown(true); break;
                         case "quit": ScheduleShutdown(false); break;
                         default: throw new ArgumentException("Unknown lifecycle test command.");
@@ -232,6 +289,12 @@ public partial class App : Application
         targetProcessId = target.ProcessId, targetForeground = (long)target.Foreground,
         targetFocus = (long)target.Focus, targetReason = target.Reason, targetStatus = target.Status,
         hotkeyError = HotkeyError,
+        audioState = audio?.Snapshot.State ?? 0, audioError = AudioError,
+        audioErrorCode = audio?.Snapshot.Error ?? 0,
+        capturedFrames = audio?.Snapshot.CapturedFrames ?? 0,
+        bufferedFrames = audio?.Snapshot.BufferedFrames ?? 0,
+        droppedFrames = audio?.Snapshot.DroppedFrames ?? 0,
+        microphonesLoaded, microphoneCount = Microphones.Count(x => x.Id.Length != 0 && !x.Name.StartsWith("Unavailable microphone", StringComparison.Ordinal)),
         trayReady = host?.TrayReady ?? false,
         preferences = Preferences, settingsError = SettingsError, startupEnabled = Startup.Enabled,
         settingsPath = Store.FilePath, managedReadyMs, widgetReadyMs
@@ -242,10 +305,13 @@ public partial class App : Application
     {
         if (stopping) return;
         stopping = true;
+        preview.Cancel(); host?.SetPreview(0);
         RestartRequested = restart;
         // Let the activation pipe acknowledge the request before Main disposes it.
         await Task.Delay(200);
         events?.Stop();
+        host?.SetPreview(0);
+        audio?.Dispose(); audio = null;
         host?.Dispose();
         host = null;
         // Application.Exit avoids depending on Close/Closed for a Window that has
@@ -254,7 +320,10 @@ public partial class App : Application
     }
     internal void Cleanup()
     {
+        stopping = true;
         events?.Stop();
+        host?.SetPreview(0);
+        audio?.Dispose(); audio = null;
         host?.Dispose();
         host = null;
     }

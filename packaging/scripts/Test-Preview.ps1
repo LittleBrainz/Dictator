@@ -32,7 +32,7 @@ public static class DictatorPreviewWindows {
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $fixtureExe = Join-Path $repo 'artifacts/native/bin/Release/Dictator.Interaction.Tests.exe'
 $launcher = Join-Path $PackageRoot 'Dictator.exe'
-$data = Join-Path $EvidenceRoot 'phase2 profile 中文/.dictator'
+$data = Join-Path $EvidenceRoot 'phase3 profile 中文/.dictator'
 $sequence = 0
 $fixtureProcess = $null
 $hostProcess = $null
@@ -103,19 +103,66 @@ try {
     if ($fresh.hotkeyError) { throw "Default Hotkey registration failed: $($fresh.hotkeyError)" }
     if ([DictatorPreviewWindows]::GetForegroundWindow() -ne $target) { throw "Startup lost target focus to $([DictatorPreviewWindows]::ForegroundProcess())." }
     $null = Wait-State $true $false
+    # Hosted runners may have no microphone endpoint. Exercise the actual native
+    # failure path in that case; do not fabricate capture or skip the gesture checks.
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $catalog = Request 'snapshot'
+        if ($catalog.microphonesLoaded) { break }
+        Start-Sleep -Milliseconds 25
+    } while ($timer.Elapsed.TotalSeconds -lt 8)
+    if (-not $catalog.microphonesLoaded) { throw 'Microphone enumeration did not complete.' }
     Tap-Hotkey
-    $active = Wait-State $true $true
-    if ([DictatorPreviewWindows]::GetForegroundWindow() -ne $target) { throw 'Hotkey stole focus.' }
-    Tap-Hotkey
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $active = Request 'snapshot'
+        if ($active.audioState -eq 2 -or ($active.audioState -eq 3 -and $active.audioError)) { break }
+        Start-Sleep -Milliseconds 25
+    } while ($timer.Elapsed.TotalSeconds -lt 8)
+    if ($active.audioState -eq 2) {
+        $null = Wait-State $true $true
+        if ([DictatorPreviewWindows]::GetForegroundWindow() -ne $target) { throw 'Capture stole focus.' }
+        if ($active.capturedFrames -eq 0) {
+            Start-Sleep -Milliseconds 250
+            $active = Request 'snapshot'
+            if ($active.capturedFrames -eq 0) { throw 'WASAPI started without delivering frames.' }
+        }
+        if ($active.bufferedFrames -gt 131072) { throw 'Native audio buffer exceeded its bound.' }
+        Tap-Hotkey
+        $null = Wait-State $true $false
+        Press-Hotkey
+        $null = Wait-State $true $true
+        Start-Sleep -Milliseconds 550
+        Release-Hotkey
+        $null = Wait-State $true $false
+        Tap-Hotkey
+        $null = Wait-State $true $true
+        $null = [DictatorPreviewWindows]::SendMessage($target, 0x8002, [IntPtr]::Zero, [IntPtr]::Zero)
+        $null = Wait-State $false $false
+        Write-Host 'Real WASAPI capture: frame delivery, bounded consumer, toggle/hold stop and eligibility stop passed.'
+    } else {
+        if ($active.audioState -ne 3 -or $active.audioErrorCode -lt 1 -or $active.audioErrorCode -gt 5 -or
+            -not $active.audioError -or $active.previewTalking) { throw 'Microphone-unavailable failure was not handled safely.' }
+        if ([DictatorPreviewWindows]::GetForegroundWindow() -ne $target) { throw 'Capture failure stole focus.' }
+        $null = [DictatorPreviewWindows]::SendMessage($target, 0x8002, [IntPtr]::Zero, [IntPtr]::Zero)
+        $null = Wait-State $false $false
+        Write-Host 'Hosted microphone unavailable: explicit capture error, safe inactive state and preserved focus passed.'
+    }
+    # Explicit selection persists even when unavailable: never silently switch
+    # an absent selected microphone to the default microphone.
+    $missing = Request 'microphone-missing'
+    if ($missing.preferences.microphoneId -ne 'Dictator.Missing.Test.Microphone') { throw 'Microphone selection did not persist.' }
+    $null = [DictatorPreviewWindows]::SendMessage($target, 0x8001, [IntPtr]::Zero, [IntPtr]::Zero)
     $null = Wait-State $true $false
-    Press-Hotkey
-    $null = Wait-State $true $true
-    # Waiting for the IPC snapshot itself exceeds 500 ms; retain a further 550 ms.
-    Start-Sleep -Milliseconds 550
-    Release-Hotkey
-    $null = Wait-State $true $false
     Tap-Hotkey
-    $null = Wait-State $true $true
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $missing = Request 'snapshot'
+        if ($missing.audioState -eq 3 -and $missing.audioError -and -not $missing.previewTalking) { break }
+        Start-Sleep -Milliseconds 25
+    } while ($timer.Elapsed.TotalSeconds -lt 8)
+    if ($missing.audioState -ne 3 -or -not $missing.audioError -or $missing.previewTalking) { throw 'Explicit absent microphone did not fail safely.' }
+    $null = Request 'microphone-default'
     $null = [DictatorPreviewWindows]::SendMessage($target, 0x8002, [IntPtr]::Zero, [IntPtr]::Zero)
     $null = Wait-State $false $false
     Tap-Hotkey
@@ -130,7 +177,7 @@ try {
     }
     $null = Request 'quit'
     if (-not $hostProcess.WaitForExit(15000) -or $hostProcess.ExitCode -ne 0) { throw 'Preview Quit did not complete cleanly.' }
-    Write-Host 'Extracted package: tap toggle, hold release, eligibility loss, no-cursor recovery and unchanged target text/focus passed.'
+    Write-Host 'Extracted package: real capture or explicit hardware-unavailable error, persisted microphone selection, missing-device safety, no-cursor recovery and unchanged target text/focus passed.'
 }
 finally {
     Release-Hotkey

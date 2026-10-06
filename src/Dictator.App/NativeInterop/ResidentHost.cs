@@ -24,6 +24,8 @@ internal sealed class ResidentHost : IDisposable
     }
     internal bool TryInput(out NativeInput input) => NativeMethods.HostInput(handle, out input) != 0;
     internal void SetPreview(ulong target) => NativeMethods.EnsureSuccess(NativeMethods.HostPreview(handle, target));
+    internal void ConfigureAudio(string deviceId) => NativeMethods.EnsureSuccess(NativeMethods.HostConfigureAudio(handle, deviceId));
+    internal nint AudioHandle => NativeMethods.HostAudioHandle(handle);
     // Future streaming provider supplies raw deltas on the UI thread. No mock text.
     internal ulong LiveTextSession => NativeMethods.HostLiveTextSession(handle);
     internal NativeResult AppendLiveText(ulong target, ulong session, string text) =>

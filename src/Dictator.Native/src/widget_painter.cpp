@@ -30,10 +30,10 @@ void line(Graphics& g, Color color, REAL pen_width, REAL x1, REAL y1, REAL x2, R
 void button(Graphics& g, REAL x, REAL y, REAL radius, bool lit, bool pressed, Color accent) noexcept {
     GraphicsPath circle; circle.AddEllipse(x - radius, y - radius, 2 * radius, 2 * radius);
     if (lit) {
-        for (int i = 5; i > 0; --i)
-            stroke(g, circle, Color(12, accent.GetR(), accent.GetG(), accent.GetB()), static_cast<REAL>(i * 2));
+        for (int i = accent.GetR() > accent.GetG() ? 7 : 5; i > 0; --i)
+            stroke(g, circle, Color(accent.GetR() > accent.GetG() ? 24 : 12, accent.GetR(), accent.GetG(), accent.GetB()), static_cast<REAL>(i * 2));
     }
-    const Color tint = accent.GetR() > accent.GetG() ? Color(255, 72, 14, 35) : Color(255, 8, 56, 53);
+    const Color tint = accent.GetR() > accent.GetG() ? Color(255, 128, 20, 35) : Color(255, 8, 56, 53);
     LinearGradientBrush glass(PointF(x, y - radius), PointF(x, y + radius),
         lit ? tint : Color(255, 35, 62, 94), Color(255, 3, 14, 32));
     if (pressed) glass.SetLinearColors(Color(255, 3, 14, 32), Color(255, 24, 48, 68));
@@ -120,7 +120,7 @@ int hit_test(int client_width, int client_height, int x, int y) noexcept {
     return 0;
 }
 void paint(HWND window, HDC destination, int client_width, int client_height,
-    bool talking, bool eligible, int hover, int pressed, ULONGLONG timestamp,
+    bool talking, bool eligible, int hover, int pressed, const std::array<float, 25>& levels,
     const ticker_text& ticker, const wchar_t* hint, float caption_alpha, float hint_x,
     float hint_width, float hint_period) noexcept {
     if (client_width <= 0 || client_height <= 0) return;
@@ -137,7 +137,7 @@ void paint(HWND window, HDC destination, int client_width, int client_height,
         const auto clip = g.Save();
         GraphicsPath panel; rounded(panel, 1.8f, 29.8f, width - 3.6f, 33.4f, 16.7f);
         g.SetClip(&panel, CombineModeIntersect);
-        spotlight(g, 0, 28, 53, 37, Color(60, mic_color.GetR(), mic_color.GetG(), mic_color.GetB()));
+        spotlight(g, 0, 28, 53, 37, Color(active ? 60 : 100, mic_color.GetR(), mic_color.GetG(), mic_color.GetB()));
         spotlight(g, 43, 32, waveform_right - 40, 29, Color(55, 0, 90, 248)); g.Restore(clip);
     }
     button(g, 19.5f, 46.5f, 14.7f, true, pressed == 1, mic_color);
@@ -147,18 +147,12 @@ void paint(HWND window, HDC destination, int client_width, int client_height,
     stroke(g, cradle, Color(255, 242, 255, 255), 1.1f);
     line(g, Color(255, 242, 255, 255), 1.1f, 19.5f, 53, 19.5f, 55.6f);
     line(g, Color(255, 242, 255, 255), 1.1f, 16.3f, 55.6f, 22.7f, 55.6f);
-    if (!active) {
-        line(g, Color(255, 8, 21, 35), 3, 12.8f, 53.4f, 26.2f, 40);
-        line(g, mic_color, 1.6f, 12.8f, 53.4f, 26.2f, 40);
-    }
     const Color wave = eligible ? Color(255, 35, 204, 255) : Color(255, 255, 57, 77);
-    if (active) {
+    if (active && *std::max_element(levels.begin(), levels.end()) > .001f) {
         constexpr int bars = 25;
         for (int i = 0; i < bars; ++i) {
             const REAL x = waveform_left + static_cast<REAL>(i) * (waveform_right - waveform_left) / (bars - 1);
-            const double phase = static_cast<double>(timestamp) / 210 + i * .42;
-            const double envelope = std::pow(std::sin(i * 3.14159265358979323846 / (bars - 1)), 2);
-            const REAL half = static_cast<REAL>(.45 + 13.7 * envelope * (.2 + .8 * std::abs(std::sin(phase))));
+            const REAL half = .45f + 13.7f * levels[static_cast<std::size_t>(i)];
             line(g, Color(22, 0, 144, 255), 7, x, 46.5f - half, x, 46.5f + half);
             line(g, Color(70, 0, 163, 255), 4, x, 46.5f - half, x, 46.5f + half);
             line(g, wave, 1.3f, x, 46.5f - half, x, 46.5f + half);

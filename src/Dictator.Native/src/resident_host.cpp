@@ -14,6 +14,7 @@
 #include "dictator_native.h"
 #include "target_probe.h"
 #include "widget_painter.h"
+#include "audio_capture.h"
 
 struct dictator_host {
     HWND owner{}, widget{};
@@ -33,6 +34,11 @@ struct dictator_host {
     float hint_period{};
     widget_design::ticker_text ticker;
     widget_design::caption_visibility caption;
+    std::unique_ptr<dictator_audio> audio;
+    wchar_t microphone[512]{};
+    std::array<float, 25> levels{};
+    uint64_t level_at{}, audio_error_session{}, device_revision{};
+    bool audio_error_reported{};
     dictator_target current{};
     wchar_t hotkey[128]{L"Ctrl-Alt-\\"};
     std::unique_ptr<target_probe> probe;
@@ -67,6 +73,8 @@ void hide_tooltip(dictator_host* h) noexcept {
 void close_widget(dictator_host* h) noexcept {
     h->talking = false; h->target = 0; h->hover = -1; h->dragging = false; h->pressed_region = -1;
     if (h->probe) h->probe->cancel_inputs();
+    if (h->audio) h->audio->stop();
+    h->levels.fill(0);
     if (GetCapture() == h->widget) ReleaseCapture();
     hide_tooltip(h); ++h->text_epoch; h->ticker.clear(GetTickCount64()); ShowWindow(h->widget, SW_HIDE); h->events |= 32;
 }
@@ -227,6 +235,8 @@ void refresh_target(dictator_host* h) noexcept {
     h->current = target;
     if (h->talking && (!target.eligible || h->target != target.token)) {
         h->talking = false; h->target = 0; ++h->text_epoch; h->ticker.clear(now); hide_tooltip(h); h->hover_at = now;
+        if (h->audio) h->audio->stop();
+        h->levels.fill(0);
     }
     if (changed || h->talking) InvalidateRect(h->widget, nullptr, FALSE);
     show_tooltip(h);
@@ -255,6 +265,31 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
     if (message == WM_HOTKEY) return 0; // Reservation/conflict detection; hook supplies both edges.
     if (message == WM_TIMER && h->probe) {
         refresh_target(h); show_tooltip(h);
+        if (h->audio) {
+            dictator_audio_snapshot audio{}; h->audio->snapshot(audio);
+            if (audio.device_revision != h->device_revision) { h->device_revision = audio.device_revision; h->events |= 128; }
+            if (h->talking && audio.state == 0) {
+                h->talking = false; h->target = 0; h->levels.fill(0); ++h->text_epoch;
+                h->ticker.clear(GetTickCount64()); hide_tooltip(h); h->events |= 32;
+            }
+            if (audio.state == 3 && (!h->audio_error_reported || audio.session != h->audio_error_session)) {
+                h->audio_error_reported = true; h->audio_error_session = audio.session;
+                h->talking = false; h->target = 0; h->levels.fill(0); ++h->text_epoch;
+                h->ticker.clear(GetTickCount64()); hide_tooltip(h); h->events |= 32 | 64;
+                NOTIFYICONDATAW notice{}; notice.cbSize = sizeof(notice); notice.hWnd = h->owner; notice.uID = 1;
+                notice.uFlags = NIF_INFO; notice.dwInfoFlags = NIIF_ERROR;
+                wcscpy_s(notice.szInfoTitle, L"Dictator microphone");
+                wcscpy_s(notice.szInfo, audio.error == 2 ? L"Microphone access was denied. Check Windows microphone privacy settings." :
+                    audio.error == 3 ? L"The microphone changed or disconnected. Select a microphone in Dictator Settings, then start Talking again." :
+                    L"The microphone could not start. Check the microphone selection in Dictator Settings.");
+                Shell_NotifyIconW(NIM_MODIFY, &notice);
+            }
+            if (h->talking && GetTickCount64() - h->level_at >= 24) {
+                std::move(h->levels.begin() + 1, h->levels.end(), h->levels.begin());
+                h->levels.back() = audio.state == 2 ? std::clamp(std::sqrt(audio.rms) * 3.f, 0.f, 1.f) : 0;
+                h->level_at = GetTickCount64(); InvalidateRect(h->widget, nullptr, FALSE);
+            }
+        }
         if (IsWindowVisible(h->widget) &&
             (h->caption.animating(GetTickCount64()) || h->hint_period > 0))
             InvalidateRect(h->widget, nullptr, FALSE);
@@ -271,6 +306,7 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
     if (message == tray_message) {
         const auto event = LOWORD(lp);
         if (event == NIN_SELECT || event == NIN_KEYSELECT) { h->events |= 1; return 0; }
+        if (event == NIN_BALLOONUSERCLICK) { h->events |= 2; return 0; }
         if (event == WM_CONTEXTMENU) {
             auto menu = CreatePopupMenu(); if (!menu) return 0;
             AppendMenuW(menu, MF_STRING, 1, L"Open Widget"); AppendMenuW(menu, MF_STRING, 2, L"Open Settings");
@@ -294,7 +330,7 @@ void draw_widget(dictator_host* h, HWND hwnd, HDC destination) noexcept {
     const float alpha = h->caption.opacity(now);
     const float hint_x = widget_design::hint_scroll_x(h->hint_period, now - h->hint_at);
     widget_design::paint(hwnd, destination, rect.right, rect.bottom, h->talking, h->current.eligible != 0,
-        h->hover, h->pressed_region, now, h->ticker, h->hint, alpha, hint_x, h->hint_width, h->hint_period);
+        h->hover, h->pressed_region, h->levels, h->ticker, h->hint, alpha, hint_x, h->hint_width, h->hint_period);
 }
 void paint_widget(dictator_host* h, HWND hwnd) noexcept {
     PAINTSTRUCT paint{}; BeginPaint(hwnd, &paint); EndPaint(hwnd, &paint);
@@ -397,6 +433,7 @@ void DICTATOR_CALL dictator_host_destroy(dictator_host* h) noexcept {
     KillTimer(h->owner, 1); UnregisterHotKey(h->owner, h->hotkey_id);
     if (h->keyboard) UnhookWindowsHookEx(h->keyboard);
     if (input_host == h) input_host = nullptr;
+    h->audio.reset(); // Borrowed eligibility guard must outlive the capture worker.
     h->probe.reset();
     NOTIFYICONDATAW info{}; info.cbSize = sizeof(info); info.hWnd = h->owner; info.uID = 1;
     if (h->tray) Shell_NotifyIconW(NIM_DELETE, &info);
@@ -437,6 +474,8 @@ dictator_result DICTATOR_CALL dictator_host_bind_hotkey(dictator_host* h, uint32
         return DICTATOR_PLATFORM_ERROR;
     }
     h->key_down = false; h->talking = false; h->target = 0; h->events |= 32;
+    if (h->audio) h->audio->stop();
+    h->levels.fill(0);
     ++h->text_epoch; h->ticker.clear(GetTickCount64()); hide_tooltip(h);
     h->probe->cancel_inputs();
     wcsncpy_s(h->hotkey, reinterpret_cast<const wchar_t*>(display), _TRUNCATE);
@@ -458,6 +497,11 @@ dictator_result DICTATOR_CALL dictator_host_preview(dictator_host* h, uint64_t t
     h->talking = target && h->current.eligible && target == h->current.token;
     h->target = h->talking ? target : 0;
     if (before != h->talking) {
+        if (h->audio) {
+            if (h->talking) { h->audio_error_reported = false; h->audio->start(h->microphone, target, h->current.foreground, h->current.focus, h->probe->eligibility_guard(), h->probe->freshness_guard()); }
+            else h->audio->stop();
+        }
+        h->levels.fill(0);
         ++h->text_epoch;
         const auto now = GetTickCount64(); h->ticker.clear(now); hide_tooltip(h); h->hover_at = now;
         InvalidateRect(h->widget, nullptr, FALSE);
@@ -490,3 +534,20 @@ dictator_result DICTATOR_CALL dictator_host_append_live_text(dictator_host* h, u
     } catch (...) { return DICTATOR_OUT_OF_MEMORY; }
 }
 uint32_t DICTATOR_CALL dictator_host_tray_ready(dictator_host* h) noexcept { return correct_thread(h) && h->tray ? 1u : 0u; }
+
+
+dictator_result DICTATOR_CALL dictator_host_configure_audio(dictator_host* h, const uint16_t* device_id) noexcept {
+    if (!correct_thread(h)) return h ? DICTATOR_WRONG_THREAD : DICTATOR_INVALID_ARGUMENT;
+    if (!device_id || wcsnlen(reinterpret_cast<const wchar_t*>(device_id), 512) >= 512) return DICTATOR_INVALID_ARGUMENT;
+    try {
+        if (!h->audio) h->audio = std::make_unique<dictator_audio>();
+        if (h->talking) { h->talking = false; h->target = 0; ++h->text_epoch; h->ticker.clear(GetTickCount64()); hide_tooltip(h); }
+        h->audio->stop(); h->levels.fill(0); h->events |= 32;
+        wcscpy_s(h->microphone, reinterpret_cast<const wchar_t*>(device_id));
+        InvalidateRect(h->widget, nullptr, FALSE); return DICTATOR_OK;
+    } catch (const std::bad_alloc&) { return DICTATOR_OUT_OF_MEMORY; }
+    catch (...) { return DICTATOR_PLATFORM_ERROR; }
+}
+dictator_audio* DICTATOR_CALL dictator_host_audio_handle(dictator_host* h) noexcept {
+    return correct_thread(h) ? h->audio.get() : nullptr;
+}

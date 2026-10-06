@@ -14,7 +14,7 @@ inline constexpr wchar_t hint_repeat_separator[] = L"   ...   ";
 inline float hint_scroll_x(float period, uint64_t elapsed) noexcept {
     // One initial reading pause; repeated copies then move without a wrap pause.
     if (period <= 0 || elapsed <= 1200) return 9;
-    return 9 - std::fmod(static_cast<float>(elapsed - 1200) * .024f, period);
+    return static_cast<float>(9 - std::fmod(static_cast<double>(elapsed - 1200) * 36 / 1000, period));
 }
 class caption_visibility {
 public:
@@ -36,7 +36,7 @@ class ticker_text {
 public:
     struct segment { std::wstring text; float width; };
     static constexpr std::size_t max_characters = 4096, max_segments = 128;
-    static constexpr float entry_x = width - 10, exit_x = text_left, speed = 64; // DIP / second
+    static constexpr float entry_x = width - 10, exit_x = text_left, speed = 96; // DIP / second
 
     void clear(uint64_t now) noexcept {
         segments_.clear(); characters_ = 0; x_ = entry_x; updated_at_ = now;

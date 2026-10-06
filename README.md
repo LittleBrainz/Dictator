@@ -1,13 +1,15 @@
 # Dictator
 
 Windows 11 x64 voice dictation assistant, built with C# 14/.NET 10, WinUI 3, and a
-small C++23 native core. This fresh implementation currently covers **Phase 2**:
+small C++23 native core. This fresh implementation currently covers **Phase 3**:
 a resident tray host, interactive non-activating Widget, configurable global Hotkey,
-editable-cursor gating and simulated waveform preview, plus Dictator Settings,
+editable-cursor gating, real microphone capture and waveform levels, plus Dictator Settings,
 profile preferences, single-instance activation and self-contained distribution.
-Audio capture, transcription and text insertion are not implemented yet.
+Speech settings offers Windows default microphone tracking or a fixed microphone.
+Audio stays in a bounded memory buffer and is discarded as it is consumed.
+Transcription and text insertion begin in later phases.
 
-Download **Dictator v0.2.6** from a successful Windows Actions run, extract once, and
+Download **Dictator v0.3.0** from a successful Windows Actions run, extract once, and
 launch the small root `Dictator.exe` launcher. The full self-contained application
 and runtimes stay under `lib/WinUI`; startup does not extract them into Temp. No
 separate .NET, Windows App SDK, or development stack is required. Persistent user
@@ -21,7 +23,7 @@ installation folder. The current build is unsigned; Windows policy may block it.
 
 The complete hosted Windows build is `./packaging/scripts/Build.ps1`. GitHub
 Actions on `windows-2025` is authoritative. Phase 0 passed Windows CI and manual
-acceptance; the user also accepted Phase 1. Phase 2 requires the manual interaction
+acceptance; the user also accepted Phases 1 and 2. Phase 3 requires the microphone
 acceptance matrix on Windows 11.
 Normal startup shows the Widget and tray icon; use **Open Settings** from the tray
 to configure the app, and **Quit** to exit. Closing Settings leaves Dictator running.
@@ -32,4 +34,7 @@ the same metadata used by Diagnostics. A shared microphone icon brands the launc
 application, Settings window and tray. Focus an editable text field, then use the
 Hotkey (default Ctrl+Alt+backslash) or microphone: release before 500 ms to keep
 Talking on, or hold at least 500 ms to stop on release. When already Talking,
-release stops it. The waveform is simulated; no microphone is opened.
+release stops it. The waveform follows real microphone levels; silence remains a straight line.
+Focus loss, closing the Widget, microphone changes and capture errors stop Talking.
+The red inactive microphone has a stronger glow and no slash. Ticker and hover
+scrolling are 1.5 times faster; the live text strip awaits Phase 4 transcription.
