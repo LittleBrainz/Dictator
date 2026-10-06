@@ -32,10 +32,18 @@ function Request([string] $Command) {
     while (-not (Test-Path $output) -and $timer.Elapsed.TotalSeconds -lt 15) { Start-Sleep -Milliseconds 100 }
     if (-not (Test-Path $output)) { throw "No resident response for $Command" }
     # File writes are small, but retry a concurrent startup/restart report write.
-    for ($attempt = 0; $attempt -lt 20; $attempt++) {
-        try { $report = Get-Content $output -Raw | ConvertFrom-Json; break }
+    $report = $null
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        try {
+            $candidate = Get-Content $output -Raw | ConvertFrom-Json
+            if ($null -ne $candidate -and $candidate.PSObject.Properties['status']) {
+                $report = $candidate; break
+            }
+            Start-Sleep -Milliseconds 50
+        }
         catch { Start-Sleep -Milliseconds 50 }
     }
+    if ($null -eq $report) { throw "No complete resident response for $Command." }
     if ($report.status -ne 'ok') { throw "Resident $Command failed: $(Get-Content $output -Raw)" }
     return $report
 }

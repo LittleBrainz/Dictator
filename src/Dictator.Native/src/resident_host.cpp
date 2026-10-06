@@ -241,7 +241,9 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
     if (message == WM_HOTKEY) return 0; // Reservation/conflict detection; hook supplies both edges.
     if (message == WM_TIMER && h->probe) {
         refresh_target(h); show_tooltip(h);
-        if (h->hint[0] && IsWindowVisible(h->widget)) InvalidateRect(h->widget, nullptr, FALSE);
+        if (h->hint[0] && IsWindowVisible(h->widget) &&
+            (GetTickCount64() - h->hover_at < 1240 || h->hint_width > 252))
+            InvalidateRect(h->widget, nullptr, FALSE);
         const auto key = resolved_key(h);
         if (h->registered_key && !h->key_down && key != h->registered_key) {
             if (!reserve_hotkey(h, key)) { h->events |= 16; UnregisterHotKey(h->owner, h->hotkey_id); h->registered_key = 0; }
