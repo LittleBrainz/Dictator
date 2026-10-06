@@ -101,11 +101,13 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(GetForegroundWindow() == target);
     auto snapshot = [&] { dictator_target result{}; dictator_host_target(host, &result); return result; };
     CHECK(until([&] { return snapshot().eligible != 0; }));
-    const auto identity = snapshot();
-    CHECK(identity.process_id == test.child.dwProcessId && identity.token != 0);
+    const auto initial_identity = snapshot();
+    CHECK(initial_identity.process_id == test.child.dwProcessId && initial_identity.token != 0);
     const uint16_t binding[] = {'C','t','r','l','-','A','l','t','-','F','8',0};
     CHECK(dictator_host_bind_hotkey(host, 3, VK_F8, binding) == DICTATOR_OK);
     dictator_host_poll_events(host);
+    CHECK(until([&] { return snapshot().token != 0 && snapshot().token != initial_identity.token; }));
+    const auto identity = snapshot();
     CHECK(RegisterHotKey(nullptr, 77, MOD_CONTROL | MOD_SHIFT, VK_F9));
     CHECK(dictator_host_bind_hotkey(host, 6, VK_F9, binding) == DICTATOR_PLATFORM_ERROR);
     UnregisterHotKey(nullptr, 77);
@@ -175,9 +177,38 @@ int wmain(int argc, wchar_t** argv) {
     RECT reopened{}; GetWindowRect(widget, &reopened);
     CHECK(reopened.left == dragged.left && reopened.top == dragged.top);
     CHECK(GetForegroundWindow() == target && SendMessageW(target, WM_APP + 10, 0, 0) == 1);
+    // One-second region delay, exact contextual copy and live eligibility updates.
+    const auto tooltip = FindWindowW(L"Dictator.Tooltip.2", nullptr);
+    CHECK(tooltip && (GetWindowLongPtrW(tooltip, GWL_EXSTYLE) & WS_EX_NOACTIVATE));
+    SendMessageW(widget, WM_MOUSEMOVE, 0, MAKELPARAM(10, 10));
+    const auto early = GetTickCount64() + 900;
+    CHECK(until([&] { return GetTickCount64() >= early; }, 1500));
+    CHECK(!IsWindowVisible(tooltip));
+    CHECK(until([&] { return IsWindowVisible(tooltip) != FALSE; }));
+    wchar_t copy[512]{}; GetWindowTextW(tooltip, copy, 512);
+    CHECK(wcscmp(copy, L"Ready to Insert Text\n────────────────\nHold to Drag Widget") == 0);
+    SendMessageW(target, WM_APP + 2, 0, 0);
+    CHECK(until([&] {
+        GetWindowTextW(tooltip, copy, 512);
+        return wcscmp(copy, L"No Text Insertion Cursor\n────────────────\nHold to Drag Widget") == 0;
+    }));
+    CHECK(IsWindowVisible(tooltip) && GetForegroundWindow() == target);
+    SendMessageW(target, WM_APP + 1, 0, 0);
+    CHECK(until([&] { return snapshot().eligible != 0; }));
     // Microphone edges remain source-specific and never activate the Widget.
     RECT client{}; GetClientRect(widget, &client);
     const auto point = MAKELPARAM(client.right - 5 * client.bottom / 2, client.bottom / 2);
+    SendMessageW(widget, WM_MOUSEMOVE, 0, point);
+    CHECK(!IsWindowVisible(tooltip));
+    CHECK(until([&] { return IsWindowVisible(tooltip) != FALSE; }));
+    GetWindowTextW(tooltip, copy, 512);
+    CHECK(wcscmp(copy, L"Click to Start Talking\nHold to Talk - Release to Stop\n────────────────\nHotkey: Ctrl-Alt-\\") == 0);
+    CHECK(dictator_host_preview(host, snapshot().token) == DICTATOR_OK);
+    CHECK(until([&] {
+        GetWindowTextW(tooltip, copy, 512);
+        return wcscmp(copy, L"Click to Stop Talking\n────────────────\nHotkey: Ctrl-Alt-\\") == 0;
+    }));
+    CHECK(dictator_host_preview(host, 0) == DICTATOR_OK);
     SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, point);
     CHECK(until([&] { return dictator_host_input(host, &pressed) != 0; }));
     CHECK(pressed.source == 2 && pressed.down == 1 && pressed.target != 0);
@@ -186,5 +217,5 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(released.source == 2 && released.down == 0);
     CHECK(GetForegroundWindow() == target);
     CHECK(SendMessageW(widget, WM_MOUSEACTIVATE, 0, 0) == MA_NOACTIVATE);
-    std::cout << "Editable/read-only/disabled/non-text metadata; real global input, UK/US backslash, repeat, modifier release, Escape passthrough, unchanged target text/focus, recovery, drag, zoom and microphone edges passed.\n";
+    std::cout << "Editable/read-only/disabled/non-text metadata; real global input, UK/US backslash, repeat, modifier release, Escape passthrough, unchanged target text/focus, recovery, drag, zoom, tooltip delay/copy/live update and microphone edges passed.\n";
 }

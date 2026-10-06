@@ -117,6 +117,13 @@ void show_tooltip(dictator_host* h) noexcept {
     if (GetTickCount64() - h->hover_at < 1000) return;
     wchar_t binding[160]{};
     const auto copy = tooltip_text(h, binding, std::size(binding));
+    wchar_t accessible[512]{};
+    for (int i = 0; i < copy.count; ++i) {
+        if (i > 0) wcscat_s(accessible, L"\n");
+        if (i == copy.separator) wcscat_s(accessible, L"────────────────\n");
+        wcscat_s(accessible, copy.lines[i]);
+    }
+    SetWindowTextW(h->tooltip, accessible);
     auto dc = GetDC(h->tooltip);
     auto font = widget_font(h, 12); auto old = SelectObject(dc, font);
     int width{}, line_height{};
