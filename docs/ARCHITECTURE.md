@@ -224,7 +224,11 @@ plus the normal margin and half the relevant bottom taskbar height. Primary and
 secondary taskbar bounds are queried; auto-hidden bottom taskbars are reserved
 before positioning. A DPI-scaled 24 DIP clearance is the fallback. Dragged
 positions are preserved, subject to work-area/taskbar clamping.
-Display/setting/DPI changes re-clamp placement.
+Drag requests are clamped before the single SetWindowPos call. The destination
+monitor is selected from the proposed rectangle without moving the HWND first,
+so cross-monitor dragging retains DPI handling and never paints a speculative
+off-screen/taskbar-overlapping location. Display/setting/DPI changes re-clamp
+placement.
 
 The blue glass frame is painted with double-buffered, anti-aliased GDI+ on the
 existing non-activating HWND. GDI+ startup/shutdown follows native host ownership.
