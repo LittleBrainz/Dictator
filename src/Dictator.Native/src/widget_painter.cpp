@@ -226,8 +226,8 @@ void paint(HWND window, HDC destination, int client_width, int client_height,
                 std::memcpy(static_cast<BYTE*>(pixels) + y * row_bytes,
                     static_cast<const BYTE*>(data.Scan0) + static_cast<std::ptrdiff_t>(y) * data.Stride, row_bytes);
             frame.UnlockBits(&data);
-            const POINT source{}; const SIZE size{client_width, client_height};
-            const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+            POINT source{}; SIZE size{client_width, client_height};
+            BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
             UpdateLayeredWindow(window, screen, nullptr, &size, memory, &source, 0, &blend, ULW_ALPHA);
         }
         SelectObject(memory, old);
