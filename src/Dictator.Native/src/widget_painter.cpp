@@ -17,11 +17,11 @@ void rounded(GraphicsPath& path, REAL x, REAL y, REAL w, REAL h, REAL radius) no
     path.AddArc(x, y + h - d, d, d, 90, 90);
     path.CloseFigure();
 }
-void stroke(Graphics& g, GraphicsPath& path, Color color, REAL width) noexcept {
-    Pen pen(color, width); pen.SetLineJoin(LineJoinRound); g.DrawPath(&pen, &path);
+void stroke(Graphics& g, GraphicsPath& path, Color color, REAL pen_width) noexcept {
+    Pen pen(color, pen_width); pen.SetLineJoin(LineJoinRound); g.DrawPath(&pen, &path);
 }
-void line(Graphics& g, Color color, REAL width, REAL x1, REAL y1, REAL x2, REAL y2) noexcept {
-    Pen pen(color, width); pen.SetStartCap(LineCapRound); pen.SetEndCap(LineCapRound);
+void line(Graphics& g, Color color, REAL pen_width, REAL x1, REAL y1, REAL x2, REAL y2) noexcept {
+    Pen pen(color, pen_width); pen.SetStartCap(LineCapRound); pen.SetEndCap(LineCapRound);
     g.DrawLine(&pen, x1, y1, x2, y2);
 }
 void button(Graphics& g, REAL x, REAL y, REAL radius, bool lit, bool pressed, Color accent) noexcept {
@@ -103,7 +103,7 @@ void paint(HDC destination, int client_width, int client_height,
     button(g, 25, 36.5f, 13.8f, true, pressed == 1, mic_color);
     GraphicsPath mic; rounded(mic, 23, 30.2f, 4, 8.4f, 2);
     SolidBrush white(Color(255, 242, 255, 255)); g.FillPath(&white, &mic);
-    GraphicsPath cradle; cradle.AddArc(21, 33.5f, 8, 8, 0, 180);
+    GraphicsPath cradle; cradle.AddArc(21.f, 33.5f, 8.f, 8.f, 0.f, 180.f);
     stroke(g, cradle, Color(255, 242, 255, 255), .95f);
     line(g, Color(255, 242, 255, 255), .95f, 25, 41.5f, 25, 44);
     line(g, Color(255, 242, 255, 255), .95f, 22.5f, 44, 27.5f, 44);
