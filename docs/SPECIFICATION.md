@@ -662,18 +662,24 @@ Settings/Close controls on the right. The approximately 1 DIP gap is genuinely
 transparent and click-through: show the desktop/application behind it. Do not
 paint or simulate a desktop background in the gap.
 Keep the Widget itself compact; the mock-up desktop background is not part of it.
+The width is 80% of the former 270 DIP width, with unchanged button sizes.
+Hide the complete upper capsule while neither Talking nor displaying a hint.
+On activation, fade the entire capsule in over approximately 180 ms, including
+its border, background and already-present text. Keep the full 62 DIP window
+height reserved for clamping while the upper capsule is hidden.
 The Widget uses this blue palette in all Settings themes.
 
 Required regions:
 
-- waveform/transcript body;
+- waveform body (the only drag surface);
+- upper text strip (never a drag surface);
 - microphone button;
 - tools/gear button;
 - close `x` button.
 
 Behavior:
 
-- click-hold on the body/waveform area drags the Widget;
+- click-hold on the waveform area alone drags the Widget;
 - dedicated controls retain their own behavior and do not start drag;
 - close cancels any active Phase 2 preview and closes only the Widget;
 - tools opens **Dictator Settings**;
@@ -727,7 +733,7 @@ Desired behavior:
 
 Use a compact design informed by the accepted prototype:
 
-- base size **270 by 62 DIP** at 1.000 zoom;
+- base size **216 by 62 DIP** at 1.000 zoom;
 - waveform/body width is compact, roughly 60% of the earlier prototype direction;
 - final dimensions may be tuned during Phase 2 acceptance, but do not drift back to a broad status panel.
 
@@ -764,6 +770,8 @@ Default placement:
 
 Position rules:
 
+- only the waveform initiates dragging; the upper text strip does not;
+- clamping reserves both capsules even when the upper capsule is hidden;
 - dragging position is remembered only for the current Dictator process session;
 - close/reopen within the same session restores the dragged position;
 - every fresh application start or Restart resets position to default;
@@ -773,11 +781,12 @@ Position rules:
 ### 14.8 Tooltips
 
 When not Talking, hover information appears **inside the top text capsule** in
-bright yellow. Wait **1 second**, then fade in smoothly over approximately 240 ms. Moving
+very bright blue (#70DEFF). Wait **1 second**, then fade in the whole upper
+capsule over approximately 180 ms with the beginning of the hint already visible. Moving
 between hit regions restarts the delay. Leaving, dragging or pressing a control
-clears the hint. Captions use an 11 DIP font.
+clears the hint. Captions use a 12 DIP font without increasing the 24 DIP text capsule height.
 Long information scrolls gently in a continuous loop, with the next repetition
-immediately following the end using the same spaced middle-dot separator.
+immediately following the end using a spaced "..." to distinguish repetitions.
 While Talking the strip belongs exclusively to white raw text; suppress hints.
 
 Retain the contextual information for waveform/body, microphone, tools and close.

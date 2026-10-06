@@ -1,6 +1,6 @@
 Dictator - Phase 2 interaction preview
 
-Download Dictator v0.2.5.zip and extract the complete artifact once, then double-click Dictator.exe.
+Download Dictator v0.2.6.zip and extract the complete artifact once, then double-click Dictator.exe.
 Windows 11 x64 is required. No separate .NET, Windows App SDK, or development
 tools are needed. Dictator.exe is a small launcher; the application and runtimes
 are unpacked under lib/WinUI. Startup does not extract them into Temp.
@@ -22,8 +22,12 @@ The waveform is SIMULATED: no microphone, transcription or text insertion yet.
 
 Hold the waveform body to drag. Position survives close/reopen in this process
 and resets on startup or Restart. Widget has five zoom stops and tooltips after
-a one-second hover. Bright yellow hover instructions fade into the upper capsule; no
-separate tooltip window appears. The gap between the capsules is transparent
+a one-second hover. The whole upper capsule fades in with very bright blue
+12 DIP hover instructions already displayed. It is hidden when neither Talking
+nor showing a hint. Long hints repeat continuously with "..." between messages.
+Only the waveform starts a drag; the full window height remains reserved for
+screen bounds. The Widget is 216 DIP wide with unchanged button sizes. No separate
+tooltip window appears. The gap between the capsules is transparent
 and passes clicks to the desktop/application behind it. White raw text will
 scroll from right to left when transcription is added in Phase 4. Hotkey/tray reopen a closed Widget even without a cursor.
 
