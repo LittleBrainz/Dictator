@@ -239,7 +239,7 @@ void refresh_target(dictator_host* h) noexcept {
     const auto thread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
     if (now - target.checked_at > 400 || reinterpret_cast<HWND>(target.foreground) != GetForegroundWindow() ||
         !GetGUIThreadInfo(thread, &gui) || reinterpret_cast<HWND>(target.focus) != gui.hwndFocus) {
-        target.token = 0; target.eligible = 0; target.reason = 50;
+        target.token = 0; target.eligible = 0; if (!target.reason) target.reason = 50;
     }
     const bool changed = h->current.token != target.token || h->current.eligible != target.eligible;
     h->current = target;
