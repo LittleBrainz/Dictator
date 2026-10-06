@@ -78,10 +78,10 @@ void spotlight(Graphics& g, REAL x, REAL y, REAL w, REAL h, Color center) noexce
     light.SetSurroundColors(&edge, &count); g.FillPath(&light, &area);
 }
 void draw_text(Graphics& g, const wchar_t* text, int count, REAL x, Color color) noexcept {
-    Font font(L"Segoe UI", 10.5f, FontStyleRegular, UnitPixel);
+    Font font(L"Segoe UI", 14.f, FontStyleRegular, UnitPixel);
     StringFormat format(StringFormat::GenericTypographic());
     format.SetFormatFlags(StringFormatFlagsNoWrap | StringFormatFlagsMeasureTrailingSpaces);
-    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 4.4f), &format, &ink);
+    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 2.2f), &format, &ink);
 }
 }
 HRGN window_region(int client_width, int client_height) noexcept {
@@ -99,7 +99,7 @@ HRGN window_region(int client_width, int client_height) noexcept {
 }
 float measure_text(const wchar_t* text, int count) noexcept {
     Bitmap pixel(1, 1, PixelFormat32bppPARGB); Graphics g(&pixel);
-    Font font(L"Segoe UI", 10.5f, FontStyleRegular, UnitPixel);
+    Font font(L"Segoe UI", 14.f, FontStyleRegular, UnitPixel);
     StringFormat format(StringFormat::GenericTypographic());
     format.SetFormatFlags(StringFormatFlagsNoWrap | StringFormatFlagsMeasureTrailingSpaces);
     RectF size;
