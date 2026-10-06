@@ -159,6 +159,15 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(until([&] { return dictator_host_input(host, &released) != 0; }));
         CHECK(released.down == 0);
     }
+    // UK OEM5 (#) can be captured literally rather than aliasing the default slash.
+    const uint16_t literal[] = {'C','t','r','l','-','A','l','t','-','K','e','y',' ','0','x','D','C',0};
+    CHECK(dictator_host_bind_hotkey(host, 3, 0xDC, 0, literal) == DICTATOR_OK);
+    key(VK_CONTROL); key(VK_MENU); key(0xDC); key(0xDC, true); key(VK_MENU, true); key(VK_CONTROL, true);
+    CHECK(until([&] { return dictator_host_input(host, &pressed) != 0; }));
+    CHECK(pressed.down == 1 && pressed.target != 0);
+    CHECK(until([&] { return dictator_host_input(host, &released) != 0; }));
+    CHECK(released.down == 0);
+    CHECK(dictator_host_bind_hotkey(host, 3, 0xDC, 1, slash) == DICTATOR_OK);
     // Drag via the body, zoom, then close/reopen: focus and session position survive.
     RECT original{}; GetWindowRect(widget, &original);
     POINT cursor{}; GetCursorPos(&cursor);

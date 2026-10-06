@@ -38,6 +38,10 @@ thread_local dictator_host* input_host{};
 static_assert(sizeof(dictator_target) == 40);
 static_assert(sizeof(dictator_input) == 24);
 bool correct_thread(dictator_host* h) noexcept { return h && h->thread == GetCurrentThreadId(); }
+uint64_t mouse_timestamp() noexcept {
+    const auto now = GetTickCount64();
+    return now - static_cast<DWORD>(static_cast<DWORD>(now) - static_cast<DWORD>(GetMessageTime()));
+}
 void hide_tooltip(dictator_host* h) noexcept { ShowWindow(h->tooltip, SW_HIDE); }
 void close_widget(dictator_host* h) noexcept {
     h->talking = false; h->target = 0; h->hover = -1; h->dragging = false;
@@ -367,13 +371,13 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
             h->dragging = true; GetCursorPos(&h->drag_origin);
             RECT r{}; GetWindowRect(hwnd, &r); h->window_origin = {r.left, r.top};
         }
-        if (h->pressed_region == 1) input_press(h, 2, 1, GetTickCount64());
+        if (h->pressed_region == 1) input_press(h, 2, 1, mouse_timestamp());
         return 0;
     }
     case WM_LBUTTONUP: {
         const auto pressed = h->pressed_region; h->pressed_region = -1; h->dragging = false;
         if (GetCapture() == hwnd) ReleaseCapture();
-        if (pressed == 1) input_press(h, 2, 0, GetTickCount64());
+        if (pressed == 1) input_press(h, 2, 0, mouse_timestamp());
         else if (pressed == hit_region(hwnd, lp)) {
             if (pressed == 3) close_widget(h);
             if (pressed == 2) h->events |= 2;
