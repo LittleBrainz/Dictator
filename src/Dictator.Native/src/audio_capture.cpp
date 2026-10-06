@@ -57,7 +57,7 @@ public:
 };
 uint32_t classify(HRESULT hr) noexcept {
     if (hr == E_NOTFOUND || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) return 1;
-    if (hr == E_ACCESSDENIED || hr == AUDCLNT_E_ENDPOINT_CREATE_FAILED) return 2;
+    if (hr == E_ACCESSDENIED) return 2;
     if (hr == AUDCLNT_E_DEVICE_INVALIDATED || hr == AUDCLNT_E_RESOURCES_INVALIDATED) return 3;
     if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) return 4;
     return 5;
@@ -213,6 +213,19 @@ void dictator_audio::run() noexcept {
                             else { std::lock_guard lock(selection_); wcscpy_s(active_, identity); follow_default_ = !selected[0]; }
                         }
                         if (identity) CoTaskMemFree(identity);
+                        // A default change during setup can precede publication of
+                        // active_. Recheck after binding notifications to this ID.
+                        if (SUCCEEDED(hr) && !selected[0]) {
+                            ComPtr<IMMDevice> current_default; LPWSTR current_id{};
+                            hr = enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &current_default);
+                            if (SUCCEEDED(hr)) hr = current_default->GetId(&current_id);
+                            if (SUCCEEDED(hr)) {
+                                std::lock_guard lock(selection_);
+                                if (wcscmp(current_id, active_) != 0) hr = AUDCLNT_E_DEVICE_INVALIDATED;
+                            }
+                            if (current_id) CoTaskMemFree(current_id);
+                        }
+                        if (SUCCEEDED(hr) && removed_.load(std::memory_order_acquire)) hr = AUDCLNT_E_DEVICE_INVALIDATED;
                         DWORD task{};
                         if (SUCCEEDED(hr)) priority = AvSetMmThreadCharacteristicsW(L"Audio", &task);
                         bool cancelled{};
