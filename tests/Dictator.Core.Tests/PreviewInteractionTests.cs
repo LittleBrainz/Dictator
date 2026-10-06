@@ -45,6 +45,22 @@ public class PreviewInteractionTests
         Assert.False(preview.Talking);
     }
     [Fact]
+    public void CaptureCancellationStopsItsGestureAndPreservesTheOtherSource()
+    {
+        foreach (var source in Enum.GetValues<PreviewInput>())
+        {
+            var other = source == PreviewInput.Hotkey ? PreviewInput.Microphone : PreviewInput.Hotkey;
+            var preview = new PreviewInteraction();
+            preview.Press(source, 1000, 42);
+            preview.CancelInput(other);
+            Assert.True(preview.Talking);
+            preview.CancelInput(source);
+            Assert.False(preview.Talking);
+            preview.Release(source, 1010);
+            Assert.False(preview.Talking);
+        }
+    }
+    [Fact]
     public void IneligibleOrChangedTargetCancelsAndOldReleaseCannotRestart()
     {
         var preview = new PreviewInteraction();

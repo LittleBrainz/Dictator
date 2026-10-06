@@ -33,6 +33,10 @@ public sealed class PreviewInteraction
         source = null;
         if (startedOn || timestamp < pressedAt || timestamp - pressedAt >= HoldMilliseconds) Cancel();
     }
+    public void CancelInput(PreviewInput input)
+    {
+        if (source == input) Cancel();
+    }
     public void Cancel()
     {
         Talking = false;

@@ -44,7 +44,7 @@ uint64_t mouse_timestamp() noexcept {
 }
 void hide_tooltip(dictator_host* h) noexcept { ShowWindow(h->tooltip, SW_HIDE); }
 void close_widget(dictator_host* h) noexcept {
-    h->talking = false; h->target = 0; h->hover = -1; h->dragging = false;
+    h->talking = false; h->target = 0; h->hover = -1; h->dragging = false; h->pressed_region = -1;
     if (h->probe) h->probe->cancel_inputs();
     if (GetCapture() == h->widget) ReleaseCapture();
     hide_tooltip(h); ShowWindow(h->widget, SW_HIDE); h->events |= 32;
@@ -138,12 +138,13 @@ void show_tooltip(dictator_host* h) noexcept {
     }
     SelectObject(dc, old); DeleteObject(font); ReleaseDC(h->tooltip, dc);
     const int pad = std::max(8, line_height / 2), gap = pad;
-    const int height = copy.count * (line_height + pad / 2) + pad * 2 + (copy.separator >= 0 ? gap : 0);
+    int height = copy.count * (line_height + pad / 2) + pad * 2 + (copy.separator >= 0 ? gap : 0);
     width += 2 * pad;
     MONITORINFO monitor{sizeof(monitor)};
     GetMonitorInfoW(MonitorFromWindow(h->widget, MONITOR_DEFAULTTONEAREST), &monitor);
     const auto& work = monitor.rcWork;
     width = std::min(width, static_cast<int>(work.right - work.left));
+    height = std::min(height, static_cast<int>(work.bottom - work.top));
     RECT r{}; GetWindowRect(h->widget, &r);
     int x = std::clamp(static_cast<int>(r.left + (r.right - r.left - width) / 2), static_cast<int>(work.left), static_cast<int>(work.right - width));
     int y = r.top - height - gap;
@@ -203,7 +204,7 @@ bool reserve_hotkey(dictator_host* h, uint32_t key) noexcept {
     h->hotkey_id = candidate; h->registered_key = key; return true;
 }
 void input_press(dictator_host* h, uint32_t source, uint32_t down, uint64_t timestamp) noexcept {
-    if (down && !IsWindowVisible(h->widget)) place_widget(h, true);
+    if (down == 1 && !IsWindowVisible(h->widget)) place_widget(h, true);
     h->probe->input(source, down, timestamp);
 }
 LRESULT CALLBACK keyboard_proc(int code, WPARAM wp, LPARAM lp) noexcept {
@@ -385,7 +386,7 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
         h->hover_at = GetTickCount64(); return 0;
     }
     case WM_CAPTURECHANGED:
-        if (h->pressed_region == 1) { h->talking = false; h->target = 0; h->events |= 32; }
+        if (h->pressed_region == 1) input_press(h, 2, 2, GetTickCount64());
         h->pressed_region = -1; h->dragging = false; return 0;
     case WM_PAINT: paint_widget(h, hwnd); return 0;
     }

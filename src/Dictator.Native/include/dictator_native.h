@@ -85,7 +85,7 @@ typedef struct dictator_input {
     uint64_t timestamp;
     uint64_t target;
     uint32_t source; // Hotkey=1, microphone=2
-    uint32_t down;
+    uint32_t down; // Release=0, press=1, source cancellation=2.
 } dictator_input;
 // Additive Phase 2 metadata/input contract; UI thread only, caller-owned outputs.
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_bind_hotkey(

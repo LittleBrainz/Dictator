@@ -226,6 +226,12 @@ int wmain(int argc, wchar_t** argv) {
     SendMessageW(widget, WM_LBUTTONUP, 0, point);
     CHECK(until([&] { return dictator_host_input(host, &released) != 0; }));
     CHECK(released.source == 2 && released.down == 0);
+    SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, point);
+    CHECK(until([&] { return dictator_host_input(host, &pressed) != 0; }));
+    CHECK(pressed.source == 2 && pressed.down == 1);
+    CHECK(ReleaseCapture());
+    CHECK(until([&] { return dictator_host_input(host, &released) != 0; }));
+    CHECK(released.source == 2 && released.down == 2);
     CHECK(GetForegroundWindow() == target);
     CHECK(SendMessageW(widget, WM_MOUSEACTIVATE, 0, 0) == MA_NOACTIVATE);
     SetCursorPos(cursor.x, cursor.y);
