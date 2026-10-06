@@ -17,6 +17,7 @@ public static class DictatorPreviewWindows {
             throw new InvalidOperationException("SendInput failed");
     }
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+    public static IntPtr FindTarget() => FindWindow("Dictator.Phase2.Target", null);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr w, IntPtr l);
@@ -67,8 +68,11 @@ try {
     $fixtureProcess = Start-Process $fixtureExe -ArgumentList '--target-fixture' -PassThru
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {
-        $target = [DictatorPreviewWindows]::FindWindow('Dictator.Phase2.Target', $null)
+        # Keep the null window-name wildcard inside C#: PowerShell can coerce a
+        # null string argument into empty text, which requests an empty title.
+        $target = [DictatorPreviewWindows]::FindTarget()
         if ($target -ne [IntPtr]::Zero) { break }
+        if ($fixtureProcess.HasExited) { throw "Preview fixture exited with $($fixtureProcess.ExitCode)." }
         Start-Sleep -Milliseconds 25
     } while ($timer.Elapsed.TotalSeconds -lt 8)
     if ($target -eq [IntPtr]::Zero) { throw 'Preview target fixture did not start.' }
