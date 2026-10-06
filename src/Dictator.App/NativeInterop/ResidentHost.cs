@@ -47,7 +47,7 @@ internal struct NativeInput
 {
     public ulong Timestamp;
     public ulong Target;
-    public PreviewInput Source;
+    public uint Source;
     public uint Down;
 }
 

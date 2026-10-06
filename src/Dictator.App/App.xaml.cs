@@ -104,9 +104,9 @@ public partial class App : Application
                 while (host.TryInput(out var input))
                 {
                     if (input.Down != 0)
-                        preview.Press(input.Source, input.Timestamp,
+                        preview.Press((PreviewInput)input.Source, input.Timestamp,
                             input.Target == target.Token && target.Eligible != 0 ? target.Token : 0);
-                    else preview.Release(input.Source, input.Timestamp);
+                    else preview.Release((PreviewInput)input.Source, input.Timestamp);
                 }
                 host.SetPreview(preview.Talking ? preview.Target : 0);
             }
