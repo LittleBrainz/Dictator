@@ -90,7 +90,7 @@ public sealed partial class MainWindow : Window
             (Down(VirtualKey.Shift) ? 4 : 0) | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);
         if (modifiers == 0) return;
         args.Handled = true;
-        owner.Save(owner.Preferences with { Hotkey = new(modifiers, (int)args.Key) });
+        owner.Save(owner.Preferences with { Hotkey = new(modifiers, (int)args.Key, LayoutBackslash: false) });
     }
     private void OnResetHotkey(object sender, RoutedEventArgs args) => owner.Save(owner.Preferences with { Hotkey = new() });
     private void OnOpenWidget(object sender, RoutedEventArgs args) => owner.OpenWidget();

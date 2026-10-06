@@ -17,7 +17,7 @@ internal sealed class ResidentHost : IDisposable
     internal nint WidgetHandle => NativeMethods.HostWidgetHandle(handle);
     internal bool TrayReady => NativeMethods.HostTrayReady(handle) != 0;
     internal bool BindHotkey(HotkeyPreference preference) => NativeMethods.HostBindHotkey(handle,
-        (uint)preference.Modifiers, (uint)preference.Key, preference.Display.Replace('+', '-')) == NativeResult.Ok;
+        (uint)preference.Modifiers, (uint)preference.Key, preference.LayoutBackslash ? 1u : 0u, preference.Display.Replace('+', '-')) == NativeResult.Ok;
     internal NativeTarget Target
     {
         get { NativeMethods.EnsureSuccess(NativeMethods.HostTarget(handle, out var target)); return target; }
@@ -55,7 +55,7 @@ internal static partial class NativeMethods
 {
     [LibraryImport(Library, EntryPoint = "dictator_host_bind_hotkey", StringMarshalling = StringMarshalling.Utf16)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial NativeResult HostBindHotkey(nint handle, uint modifiers, uint key, string display);
+    internal static partial NativeResult HostBindHotkey(nint handle, uint modifiers, uint key, uint layoutBackslash, string display);
     [LibraryImport(Library, EntryPoint = "dictator_host_target")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeResult HostTarget(nint handle, out NativeTarget target);

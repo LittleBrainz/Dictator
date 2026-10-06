@@ -69,7 +69,7 @@ DICTATOR_API dictator_result DICTATOR_CALL dictator_copy_text(
 // Additive ABI 1 resident surface. All calls, including destruction, must run on
 // the creating UI thread. Windows messages run on that thread's existing pump.
 // No managed callbacks. poll_events transfers a bitset: Widget=1, Settings=2,
-// Restart=4, Quit=8. Native owns HWNDs, tray icon, menu and drawing resources.
+// Restart=4, Quit=8, Hotkey failure=16, Cancel preview=32. Native owns HWNDs, tray icon, menu and drawing resources.
 typedef struct dictator_host dictator_host;
 typedef struct dictator_target {
     uint64_t token;
@@ -87,7 +87,7 @@ typedef struct dictator_input {
 } dictator_input;
 // Additive Phase 2 metadata/input contract; UI thread only, caller-owned outputs.
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_bind_hotkey(
-    dictator_host* host, uint32_t modifiers, uint32_t key, const uint16_t* display) DICTATOR_NOEXCEPT;
+    dictator_host* host, uint32_t modifiers, uint32_t key, uint32_t layout_backslash, const uint16_t* display) DICTATOR_NOEXCEPT;
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_target(
     dictator_host* host, dictator_target* output) DICTATOR_NOEXCEPT;
 DICTATOR_API uint32_t DICTATOR_CALL dictator_host_input(

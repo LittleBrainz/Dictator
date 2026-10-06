@@ -37,7 +37,7 @@ Sources:
 ## ABI and ownership
 
 `src/Dictator.Native/include/dictator_native.h` is the contract. It exports only C
-functions, fixed-width integers, one opaque handle, and a 24-byte sized struct.
+functions, fixed-width integers, opaque handles, and fixed-layout metadata structs.
 `LibraryImport` declares explicit cdecl calls. `NativeContext` owns exactly one
 handle through SafeHandle. No C++ class, STL object, managed callback, or exception
 crosses the boundary. UTF-16 lengths count code units; output includes a NUL and
@@ -193,7 +193,9 @@ conflict detection), and a low-level keyboard hook captures press/release while
 consuming only the matching key gesture. Modifier release order does not change
 the main-key release. Escape is never registered or consumed. The default
 backslash resolves against the focused application's keyboard layout, including
-UK OEM102 and US OEM5. A failed rebind preserves the old reservation; a settings
+UK OEM102 and US OEM5. A schema-1 optional `layoutBackslash` flag defaults to true
+for compatibility with Phase 1 preferences; manually captured bindings set it
+false so UK Ctrl+Alt+# remains distinct from the default backslash. A failed rebind preserves the old reservation; a settings
 write failure attempts to restore it and reports any rollback failure.
 
 A dedicated MTA worker polls UI Automation metadata every 60 ms and again for

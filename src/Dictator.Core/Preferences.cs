@@ -6,7 +6,7 @@ namespace Dictator.Core;
 [JsonConverter(typeof(JsonStringEnumConverter<AppTheme>))]
 public enum AppTheme { System, Light, Dark }
 
-public sealed record HotkeyPreference(int Modifiers = 3, int Key = 0xDC)
+public sealed record HotkeyPreference(int Modifiers = 3, int Key = 0xDC, bool LayoutBackslash = true)
 {
     // Win32 MOD_ALT=1, MOD_CONTROL=2, MOD_SHIFT=4, MOD_WIN=8.
     public void Validate()
@@ -19,7 +19,7 @@ public sealed record HotkeyPreference(int Modifiers = 3, int Key = 0xDC)
     public string Display => string.Join("+", new[] {
         (Modifiers & 2) != 0 ? "Ctrl" : null, (Modifiers & 1) != 0 ? "Alt" : null,
         (Modifiers & 4) != 0 ? "Shift" : null, (Modifiers & 8) != 0 ? "Win" : null,
-        Key is 0xDC or 0xE2 ? "\\" : Key == 0x20 ? "Space" : Key is >= 0x70 and <= 0x87 ? $"F{Key - 0x6F}" :
+        Key == 0xE2 || (Key == 0xDC && LayoutBackslash) ? "\\" : Key == 0x20 ? "Space" : Key is >= 0x70 and <= 0x87 ? $"F{Key - 0x6F}" :
             Key is >= 0x30 and <= 0x5A ? ((char)Key).ToString() : $"Key 0x{Key:X2}"
     }.Where(x => x is not null));
 }

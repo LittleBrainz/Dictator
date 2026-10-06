@@ -20,6 +20,7 @@ struct dictator_host {
     uint32_t events{}, theme{}, modifiers{}, key{}, registered_key{};
     int hotkey_id{1}, hover{-1}, pressed_region{-1};
     double zoom{1.0};
+    bool layout_backslash{true};
     bool tray{}, key_down{}, dragging{}, positioned{}, dragged{}, placing{}, talking{};
     POINT drag_origin{}, window_origin{};
     uint64_t target{}, hover_at{};
@@ -185,7 +186,7 @@ LRESULT CALLBACK tooltip_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noe
     return DefWindowProcW(hwnd, message, wp, lp);
 }
 uint32_t resolved_key(dictator_host* h) noexcept {
-    if (h->key != 0xDC || h->modifiers != 3) return h->key;
+    if (!h->layout_backslash || h->key != 0xDC || h->modifiers != 3) return h->key;
     const auto foreground = GetForegroundWindow();
     const auto layout = GetKeyboardLayout(GetWindowThreadProcessId(foreground, nullptr));
     const auto mapped = VkKeyScanExW(L'\\', layout);
@@ -448,18 +449,19 @@ dictator_result DICTATOR_CALL dictator_host_set_widget(dictator_host* h, uint32_
     else place_widget(h, true);
     return DICTATOR_OK;
 }
-dictator_result DICTATOR_CALL dictator_host_bind_hotkey(dictator_host* h, uint32_t modifiers, uint32_t key, const uint16_t* display) noexcept {
+dictator_result DICTATOR_CALL dictator_host_bind_hotkey(dictator_host* h, uint32_t modifiers, uint32_t key, uint32_t layout_backslash, const uint16_t* display) noexcept {
     if (!correct_thread(h)) return h ? DICTATOR_WRONG_THREAD : DICTATOR_INVALID_ARGUMENT;
-    if (!display || modifiers < 1 || modifiers > 15 || key < 0x20 || key > 0xFE ||
+    if (!display || layout_backslash > 1 || modifiers < 1 || modifiers > 15 || key < 0x20 || key > 0xFE ||
         key == VK_LWIN || key == VK_RWIN || (key >= VK_LSHIFT && key <= VK_RMENU) || (modifiers == 3 && key == VK_SPACE))
         return DICTATOR_INVALID_ARGUMENT;
     const auto old_modifiers = h->modifiers, old_key = h->key;
-    h->modifiers = modifiers; h->key = key;
+    const auto old_layout_backslash = h->layout_backslash;
+    h->modifiers = modifiers; h->key = key; h->layout_backslash = layout_backslash != 0;
     const auto resolved = resolved_key(h);
     if (old_modifiers == modifiers && h->registered_key == resolved) {
         wcsncpy_s(h->hotkey, reinterpret_cast<const wchar_t*>(display), _TRUNCATE); return DICTATOR_OK;
     }
-    if (!reserve_hotkey(h, resolved)) { h->modifiers = old_modifiers; h->key = old_key; return DICTATOR_PLATFORM_ERROR; }
+    if (!reserve_hotkey(h, resolved)) { h->modifiers = old_modifiers; h->key = old_key; h->layout_backslash = old_layout_backslash; return DICTATOR_PLATFORM_ERROR; }
     h->key_down = false; h->talking = false; h->target = 0; h->events |= 32;
     h->probe->cancel_inputs();
     wcsncpy_s(h->hotkey, reinterpret_cast<const wchar_t*>(display), _TRUNCATE);

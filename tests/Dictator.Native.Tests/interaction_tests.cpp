@@ -104,12 +104,12 @@ int wmain(int argc, wchar_t** argv) {
     const auto initial_identity = snapshot();
     CHECK(initial_identity.process_id == test.child.dwProcessId && initial_identity.token != 0);
     const uint16_t binding[] = {'C','t','r','l','-','A','l','t','-','F','8',0};
-    CHECK(dictator_host_bind_hotkey(host, 3, VK_F8, binding) == DICTATOR_OK);
+    CHECK(dictator_host_bind_hotkey(host, 3, VK_F8, 0, binding) == DICTATOR_OK);
     dictator_host_poll_events(host);
     CHECK(until([&] { return snapshot().token != 0 && snapshot().token != initial_identity.token; }));
     const auto identity = snapshot();
     CHECK(RegisterHotKey(nullptr, 77, MOD_CONTROL | MOD_SHIFT, VK_F9));
-    CHECK(dictator_host_bind_hotkey(host, 6, VK_F9, binding) == DICTATOR_PLATFORM_ERROR);
+    CHECK(dictator_host_bind_hotkey(host, 6, VK_F9, 0, binding) == DICTATOR_PLATFORM_ERROR);
     UnregisterHotKey(nullptr, 77);
     key(VK_CONTROL); key(VK_MENU); key(VK_F8);
     dictator_input pressed{};
@@ -150,7 +150,7 @@ int wmain(int argc, wchar_t** argv) {
         SendMessageW(target, WM_APP + 5, uk, 0);
         SendMessageW(target, WM_APP + 1, 0, 0);
         CHECK(until([&] { return snapshot().eligible != 0; }));
-        CHECK(dictator_host_bind_hotkey(host, 3, 0xDC, slash) == DICTATOR_OK);
+        CHECK(dictator_host_bind_hotkey(host, 3, 0xDC, 1, slash) == DICTATOR_OK);
         const auto layout = GetKeyboardLayout(GetWindowThreadProcessId(target, nullptr));
         const auto slash_key = LOBYTE(VkKeyScanExW(L'\\', layout));
         key(VK_CONTROL); key(VK_MENU); key(slash_key); key(slash_key, true); key(VK_MENU, true); key(VK_CONTROL, true);
