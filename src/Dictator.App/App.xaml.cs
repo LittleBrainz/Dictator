@@ -5,6 +5,7 @@ using Dictator.App.Diagnostics;
 using Dictator.App.Lifecycle;
 using Dictator.App.NativeInterop;
 using Dictator.Core;
+using Dictator.Core.Transcription;
 using Microsoft.UI.Xaml;
 
 namespace Dictator.App;
@@ -17,6 +18,15 @@ public partial class App : Application
     private Views.MainWindow? settings;
     private ResidentHost? host;
     private AudioBridge? audio;
+    private readonly ITranscriptionProvider speechProvider = new OpenAiTranscriptionProvider();
+    private readonly CredentialStore credentials;
+    private TranscriptionRun? transcription;
+    internal bool ApiKeyConfigured { get; private set; }
+    internal string? SpeechError { get; private set; }
+    internal string LastTranscript { get; private set; } = "";
+    internal string SpeechStatus => transcription?.Session.State.ToString() ?? "Ready";
+    internal string SpeechModel => speechProvider.Model;
+    private string lastSpeechStatus = "";
     private bool refreshingMicrophones;
     private bool microphonesLoaded;
     internal string? AudioError { get; private set; }
@@ -45,10 +55,14 @@ public partial class App : Application
         Managed Main entry to resident ready: {managedReadyMs:F2} ms
         Process creation to Widget shown (not a first-paint measurement): {widgetReadyMs:F2} ms
         Last Settings activation call duration (not first paint): {(settingsActivationMs.HasValue ? settingsActivationMs.Value.ToString("F2") + " ms" : "not activated")}
-        Provider connection: not configured
+        Provider: {speechProvider.Name}; model: {speechProvider.Model}; state: {SpeechStatus}
+        Transcription session: {transcription?.Session.SessionId.ToString() ?? "none"}
+        API credential stored: {ApiKeyConfigured}
+        Final transcript characters (content excluded): {LastTranscript.Length}
+        Speech error: {SpeechError ?? "none"}
         Current settings error: {SettingsError ?? "none"}
         Hotkey: {Preferences.Hotkey.Display}; registration: {HotkeyError ?? "ready"}
-        Widget mode: real microphone capture (transcription not yet configured)
+        Widget mode: live transcription (insertion not yet implemented)
         Audio state: {audio?.Snapshot.State.ToString() ?? "unavailable"}; source sample rate: {audio?.Snapshot.SampleRate ?? 0}
         Captured frames: {audio?.Snapshot.CapturedFrames ?? 0}; dropped frames: {audio?.Snapshot.DroppedFrames ?? 0}
         Microphone error: {AudioError ?? "none"}
@@ -59,6 +73,8 @@ public partial class App : Application
     {
         this.report = report;
         this.options = options;
+        // CI uses an isolated target and never reads/writes the user's API key.
+        credentials = new(options.IsTest ? "Dictator/Test/" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(options.TestDataRoot ?? "probe"))) : "Dictator/OpenAI");
         this.managedTimer = managedTimer;
         Store = new(options.TestDataRoot ?? AppPaths.UserDataRoot);
         Startup = new(report.DistributionRoot, options.IsTest);
@@ -86,6 +102,8 @@ public partial class App : Application
             settings.Open();
             return;
         }
+        try { ApiKeyConfigured = credentials.Exists; }
+        catch (InvalidOperationException error) { SpeechError = error.Message; }
         host = new ResidentHost();
         ConfigureMicrophone();
         if (!host.BindHotkey(Preferences.Hotkey)) HotkeyError = "The Hotkey is already in use or could not be registered. Choose another combination.";
@@ -105,7 +123,11 @@ public partial class App : Application
                 HotkeyError = "The Hotkey could not be registered for this keyboard layout. Choose another combination.";
                 settings?.RefreshPreferences();
             }
-            if ((pending & 32) != 0) preview.Cancel();
+            if ((pending & 32) != 0) {
+                if (transcription?.Session.Failure is { } fault) FailSpeech(fault.Message);
+                else if (transcription is not null && audio?.TransferFailed == true) FailSpeech("Audio could not be delivered without gaps. Check your connection and start Talking again.");
+                else { preview.Cancel(); CancelTranscription(); }
+            }
             if ((pending & 64) != 0) {
                 AudioError = DescribeAudioError(audio?.Snapshot.Error ?? 5);
                 settings?.RefreshPreferences();
@@ -114,17 +136,24 @@ public partial class App : Application
             if (!stopping && host is not null)
             {
                 var target = host.Target;
+                var cancelled = false;
+                if (transcription is not null && transcription.MustCancelForTarget(target.Eligible != 0 ? target.Token : 0)) CancelTranscription();
                 preview.RefreshTarget(target.Eligible != 0 ? target.Token : 0);
                 while (host.TryInput(out var input))
                 {
                     if (input.Down == 1)
                         preview.Press((PreviewInput)input.Source, input.Timestamp,
                             input.Target == target.Token && target.Eligible != 0 ? target.Token : 0);
-                    else if (input.Down == 2) preview.CancelInput((PreviewInput)input.Source);
+                    else if (input.Down == 2) { preview.CancelInput((PreviewInput)input.Source); cancelled = true; }
                     else preview.Release((PreviewInput)input.Source, input.Timestamp);
                 }
+                if (preview.Talking && (transcription is null || transcription.EndRequested)) StartTranscription();
+                else if (!preview.Talking && transcription is { EndRequested: false }) {
+                    if (cancelled || target.Eligible == 0 || target.Token != transcription.Target) CancelTranscription();
+                    else { host.FinishPreview(); audio?.FinishTransfer(); }
+                }
                 host.SetPreview(preview.Talking ? preview.Target : 0);
-                if (audio is null && preview.Talking) { preview.Cancel(); host.SetPreview(0); }
+                PollTranscription();
                 if (audio?.Snapshot.State == 2 && AudioError is not null) { AudioError = null; settings?.RefreshPreferences(); }
             }
         };
@@ -132,6 +161,79 @@ public partial class App : Application
         _ = RefreshMicrophonesAsync();
         ResidentReady.TrySetResult(true);
         if (options.ReportPath is not null) File.WriteAllText(options.ReportPath, Snapshot());
+    }
+    internal void SaveApiKey(string key)
+    {
+        preview.Cancel(); host?.SetPreview(0); CancelTranscription();
+        try { credentials.Save(key); ApiKeyConfigured = true; SpeechError = null; }
+        catch (InvalidOperationException error) { SpeechError = error.Message; }
+        settings?.RefreshPreferences();
+    }
+    internal void RemoveApiKey()
+    {
+        preview.Cancel(); host?.SetPreview(0); CancelTranscription();
+        try { credentials.Remove(); ApiKeyConfigured = false; SpeechError = null; }
+        catch (InvalidOperationException error) { SpeechError = error.Message; }
+        settings?.RefreshPreferences();
+    }
+    private void StartTranscription()
+    {
+        CancelTranscription();
+        try {
+            var key = credentials.Read();
+            if (key is null) { ApiKeyConfigured = false; FailSpeech("Add an OpenAI API key in Speech settings to start transcription."); return; }
+            if (host is null || audio is null) { FailSpeech("Microphone capture is unavailable. Check Speech settings and restart Dictator."); return; }
+            host.SetPreview(preview.Target);
+            var epoch = host.LiveTextSession;
+            if (epoch == 0) { preview.Cancel(); return; }
+            LastTranscript = ""; SpeechError = null;
+            transcription = new(speechProvider.CreateSession(), preview.Target, epoch);
+            transcription.Start(key); audio.BeginTransfer(transcription);
+            settings?.RefreshPreferences();
+        } catch (InvalidOperationException error) { FailSpeech(error.Message); }
+    }
+    private void CancelTranscription()
+    {
+        audio?.EndTransfer();
+        if (transcription is null) return;
+        var old = transcription; transcription = null;
+        old.Cancel(); _ = old.Session.DisposeAsync();
+    }
+    private void FailSpeech(string message)
+    {
+        preview.Cancel(); host?.SetPreview(0); CancelTranscription();
+        SpeechError = message; RememberError(message);
+        host?.NotifyError(message); settings?.RefreshPreferences();
+    }
+    private void PollTranscription()
+    {
+        var active = transcription;
+        if (active is null || host is null || stopping) return;
+        if (active.Session.Failure is { } failure) { FailSpeech(failure.Message); return; }
+        if (audio?.TransferFailed == true) { FailSpeech("Audio could not be delivered without gaps. Check your connection and start Talking again."); return; }
+        var text = new System.Text.StringBuilder(2048);
+        for (var i = 0; i < 64 && active.Session.TryRead(out var notice); ++i) {
+            if (notice!.Kind == TranscriptEventKind.Final) {
+                if (active.Finishing && !active.Invalidated) { LastTranscript = notice.Text; settings?.RefreshSpeechStatus(); }
+            } else if (active.CanDisplay(preview.Target, host.LiveTextSession)) {
+                if (text.Length + notice.Text.Length > 1024) { AppendTicker(active, text.ToString()); text.Clear(); }
+                text.Append(notice.Text);
+            }
+        }
+        if (text.Length != 0) AppendTicker(active, text.ToString());
+        if (lastSpeechStatus != SpeechStatus) { lastSpeechStatus = SpeechStatus; settings?.RefreshSpeechStatus(); }
+    }
+    private void AppendTicker(TranscriptionRun active, string text)
+    {
+        if (host is null || !active.CanDisplay(preview.Target, host.LiveTextSession)) return;
+        var result = host.AppendLiveText(active.Target, active.Presentation, text);
+        if (result == NativeResult.BufferTooSmall) {
+            // Keep the latest live text if speaking outpaces the display; the final
+            // transcript remains complete and bounded in the provider session.
+            host.ClearLiveText(active.Target, active.Presentation);
+            result = host.AppendLiveText(active.Target, active.Presentation, text);
+        }
+        if (result != NativeResult.Ok) { preview.Cancel(); host.SetPreview(0); CancelTranscription(); }
     }
     internal void OpenWidget() { if (!stopping) host?.SetWidget(true, Preferences); }
     private void ConfigureMicrophone()
@@ -197,8 +299,8 @@ public partial class App : Application
             var microphoneChanged = candidate.MicrophoneId != Preferences.MicrophoneId;
             Store.Save(candidate);
             Preferences = candidate;
-            if (microphoneChanged) { preview.Cancel(); ConfigureMicrophone(); _ = RefreshMicrophonesAsync(); }
-            if (rebound) { HotkeyError = null; preview.Cancel(); }
+            if (microphoneChanged) { preview.Cancel(); CancelTranscription(); ConfigureMicrophone(); _ = RefreshMicrophonesAsync(); }
+            if (rebound) { HotkeyError = null; preview.Cancel(); CancelTranscription(); }
             SettingsError = Store.Error;
             if (host is not null) host.SetWidget(IsWindowVisible(host.WidgetHandle) != 0, Preferences);
         }
@@ -290,6 +392,8 @@ public partial class App : Application
         targetFocus = (long)target.Focus, targetReason = target.Reason, targetStatus = target.Status,
         hotkeyError = HotkeyError,
         audioState = audio?.Snapshot.State ?? 0, audioError = AudioError,
+        speechState = SpeechStatus, speechError = SpeechError, apiKeyConfigured = ApiKeyConfigured,
+        finalTranscriptCharacters = LastTranscript.Length,
         audioErrorCode = audio?.Snapshot.Error ?? 0,
         capturedFrames = audio?.Snapshot.CapturedFrames ?? 0,
         bufferedFrames = audio?.Snapshot.BufferedFrames ?? 0,
@@ -305,12 +409,13 @@ public partial class App : Application
     {
         if (stopping) return;
         stopping = true;
-        preview.Cancel(); host?.SetPreview(0);
+        preview.Cancel(); host?.SetPreview(0); CancelTranscription();
         RestartRequested = restart;
         // Let the activation pipe acknowledge the request before Main disposes it.
         await Task.Delay(200);
         events?.Stop();
         host?.SetPreview(0);
+        CancelTranscription();
         audio?.Dispose(); audio = null;
         host?.Dispose();
         host = null;
@@ -323,6 +428,7 @@ public partial class App : Application
         stopping = true;
         events?.Stop();
         host?.SetPreview(0);
+        CancelTranscription();
         audio?.Dispose(); audio = null;
         host?.Dispose();
         host = null;

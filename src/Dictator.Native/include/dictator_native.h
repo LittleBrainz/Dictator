@@ -77,7 +77,7 @@ typedef struct dictator_audio_device {
     uint16_t name[256];
     uint32_t is_default;
 } dictator_audio_device;
-// Exactly 64 bytes. State: idle=0, starting=1, capturing=2, error=3.
+// Exactly 64 bytes. State: idle=0, starting=1, capturing=2, error=3, draining=4 (stopped capture; consumer drains final chunks).
 // Error: none=0, no device=1, permissions=2, device changed=3,
 // unsupported format=4, platform failure=5. Metadata only; no PCM in diagnostics.
 typedef struct dictator_audio_snapshot {
@@ -98,6 +98,9 @@ DICTATOR_API dictator_audio* DICTATOR_CALL dictator_host_audio_handle(dictator_h
 DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_devices(dictator_audio* audio, dictator_audio_device* devices,
     uint32_t capacity, uint32_t* count) DICTATOR_NOEXCEPT;
 DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_status(dictator_audio* audio, dictator_audio_snapshot* snapshot) DICTATOR_NOEXCEPT;
+// Any non-real-time thread: stop/purge capture on provider failure without
+// waiting for UI dispatch. Borrowed service ownership rules still apply.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_cancel(dictator_audio* audio) DICTATOR_NOEXCEPT;
 // Exactly one serialized non-real-time consumer. Normalized mono float samples
 // at the source sample rate. Max 8192 frames/call. Native and managed copies are
 // transient; consumed/stale native slots are zeroed. Drop-new overflow is counted.
@@ -139,6 +142,15 @@ DICTATOR_API uint64_t DICTATOR_CALL dictator_host_live_text_session(dictator_hos
 // This function captures, formats, inserts and persists nothing.
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_append_live_text(
     dictator_host* host, uint64_t target, uint64_t session, const uint16_t* input, uint32_t count) DICTATOR_NOEXCEPT;
+// Graceful UI-thread Talk stop: close the capture device, preserve only its
+// bounded final chunks for the current consumer. Eligibility/error/close/abort
+// continue to invalidate and purge immediately. Next start invalidates old data.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_finish_preview(dictator_host* host) DICTATOR_NOEXCEPT;
+// UI-thread presentation-only clear for bounded ticker backpressure. Session must
+// still be active; this does not change its epoch or touch audio/transcription.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_clear_live_text(dictator_host* host, uint64_t target, uint64_t session) DICTATOR_NOEXCEPT;
+// UI-thread sanitized user error notice. No transcript or credential content.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_notify_error(dictator_host* host, const uint16_t* message) DICTATOR_NOEXCEPT;
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_create(
     uint32_t requested_abi, dictator_host** out_host) DICTATOR_NOEXCEPT;
 DICTATOR_API void DICTATOR_CALL dictator_host_destroy(dictator_host* host) DICTATOR_NOEXCEPT;

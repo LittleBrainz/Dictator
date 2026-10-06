@@ -1,6 +1,6 @@
-Dictator - Phase 3 microphone capture
+Dictator - Phase 4 live transcription
 
-Download Dictator v0.3.0.zip and extract the complete artifact once, then double-click Dictator.exe.
+Download Dictator v0.4.0.zip and extract the complete artifact once, then double-click Dictator.exe.
 Windows 11 x64 is required. No separate .NET, Windows App SDK, or development
 tools are needed. Dictator.exe is a small launcher; the application and runtimes
 are unpacked under lib/WinUI. Startup does not extract them into Temp.
@@ -22,7 +22,14 @@ Speech settings selects the Windows default microphone or a specific microphone.
 The waveform shows real microphone levels; silence remains a straight line.
 Microphone changes/disconnection stop Talking and show an actionable error.
 Audio is consumed and discarded from bounded memory; no recordings are saved.
-Transcription and text insertion are not implemented yet.
+OpenAI gpt-live-transcribe supplies raw text while you speak. Enter an OpenAI
+API key in Speech settings; Windows Credential Manager stores it securely.
+OpenAI API billing is separate from ChatGPT. Dictator sends audio to OpenAI
+only while Talking and does not save recordings or transcripts.
+Normal stop drains final audio and finalizes transcription. Speech settings
+shows the latest final transcript (memory only) and offers Copy.
+Focus loss cancels pending work; errors stop safely. Start Talking again to
+reconnect after fixing an error. Automatic text insertion comes in Phase 5.
 The inactive red microphone has a stronger glow and no diagonal slash.
 
 Hold the waveform body to drag. Position survives close/reopen in this process
@@ -34,8 +41,8 @@ Ticker and tooltip scrolling are 1.5 times faster than v0.2.6.
 Only the waveform starts a drag; the full window height remains reserved for
 screen bounds. The Widget is 216 DIP wide with unchanged button sizes. No separate
 tooltip window appears. The gap between the capsules is transparent
-and passes clicks to the desktop/application behind it. White raw text will
-scroll from right to left when transcription is added in Phase 4. Hotkey/tray reopen a closed Widget even without a cursor.
+and passes clicks to the desktop/application behind it. White raw text
+scrolls from right to left during Talking. Hotkey/tray reopen a closed Widget even without a cursor.
 
 Preferences are saved in %USERPROFILE%\.dictator\settings.json, independent
 of the installation folder. Invalid or unsupported settings files are preserved

@@ -403,7 +403,11 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(text_ink(widget, false) > 10);
     CHECK(dictator_host_append_live_text(host, snapshot().token, text_session, raw_input, static_cast<uint32_t>(wcslen(raw))) == DICTATOR_OK);
     GetWindowTextW(widget, copy, 768); CHECK(wcscmp(copy, L"Dictator Widget") == 0); // No transcript in window titles.
-    CHECK(dictator_host_preview(host, 0) == DICTATOR_OK);
+    CHECK(dictator_host_clear_live_text(host, snapshot().token, text_session + 1) == DICTATOR_INVALID_ARGUMENT);
+    CHECK(dictator_host_clear_live_text(host, snapshot().token, text_session) == DICTATOR_OK);
+    CHECK(dictator_host_live_text_session(host) == text_session && text_ink(widget, false) == 0);
+    CHECK(dictator_host_append_live_text(host, snapshot().token, text_session, raw_input, static_cast<uint32_t>(wcslen(raw))) == DICTATOR_OK);
+    CHECK(dictator_host_finish_preview(host) == DICTATOR_OK);
     CHECK(text_ink(widget, false) == 0 && dictator_host_live_text_session(host) == 0);
     const auto hidden = CreateRectRgn(0, 0, 0, 0);
     CHECK(GetWindowRgn(widget, hidden) != ERROR);

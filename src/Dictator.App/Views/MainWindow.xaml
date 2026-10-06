@@ -40,7 +40,7 @@
                   ValueChanged="OnZoomChanged" MaxWidth="400" HorizontalAlignment="Stretch"
                   AutomationProperties.Name="Widget Zoom" />
           <TextBlock Text="Choose one of five sizes. The middle stop is the default." TextWrapping="Wrap" />
-          <TextBlock Text="The waveform shows microphone activity while Talking. Speech-to-text will be added in the next phase." TextWrapping="Wrap" />
+          <TextBlock Text="The waveform shows microphone activity while Talking. Raw speech-to-text scrolls in the upper strip while Talking. Text insertion comes in the next phase." TextWrapping="Wrap" />
           <Button Content="Open Widget" Click="OnOpenWidget" />
         </StackPanel>
         <StackPanel x:Name="SpeechPage" Visibility="Collapsed" Spacing="12">
@@ -48,7 +48,19 @@
                     SelectionChanged="OnMicrophoneChanged" />
           <Button Content="Refresh microphones" Click="OnRefreshMicrophones" />
           <TextBlock Text="Windows default follows your current default input device. Choosing a specific microphone keeps that selection, including when it is disconnected." TextWrapping="Wrap" />
-          <TextBlock Text="Audio is captured only while Talking and is discarded from memory. No recordings are saved. Speech-to-text is coming in the next phase." TextWrapping="Wrap" />
+          <TextBlock Text="Audio is streamed to OpenAI only while Talking. Dictator saves no recordings or transcripts. Transcription uses the spoken language; automatic text insertion comes in the next phase." TextWrapping="Wrap" />
+          <TextBlock x:Name="SpeechProviderText" TextWrapping="Wrap" />
+          <PasswordBox x:Name="ApiKeyBox" Header="OpenAI API key" PlaceholderText="Enter a key to save or replace it" MaxLength="1024" PasswordRevealMode="Hidden" />
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Content="Save key" Click="OnSaveApiKey" />
+            <Button x:Name="RemoveKeyButton" Content="Remove key" Click="OnRemoveApiKey" />
+          </StackPanel>
+          <TextBlock x:Name="CredentialStatus" TextWrapping="Wrap" />
+          <HyperlinkButton Content="OpenAI API keys" NavigateUri="https://platform.openai.com/api-keys" />
+          <TextBlock Text="OpenAI API billing is separate from a ChatGPT subscription. The key is stored in Windows Credential Manager and is never saved in settings or diagnostics." TextWrapping="Wrap" />
+          <TextBlock x:Name="SpeechStatusText" TextWrapping="Wrap" />
+          <TextBox x:Name="RawTranscript" Header="Latest final transcript (memory only)" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="240" />
+          <Button x:Name="CopyTranscriptButton" Content="Copy transcript" Click="OnCopyTranscript" />
         </StackPanel>
         <StackPanel x:Name="DiagnosticsPage" Visibility="Collapsed" Spacing="12">
           <Button Content="Copy" Click="OnCopyDiagnostics" />

@@ -43,6 +43,23 @@ public sealed class NativeContractTests
         Assert.NotEqual(2u, audio.Snapshot.State); // Enumeration never starts capture.
         host.ConfigureAudio("Dictator.Missing.Test.Microphone");
         Assert.NotEqual(2u, audio.Snapshot.State);
+        var audioHandle = host.AudioHandle;
+        Assert.Equal(NativeResult.Ok, Task.Run(() => NativeMethods.AudioCancel(audioHandle)).GetAwaiter().GetResult());
+    }
+
+    [Fact]
+    public void CredentialManagerRoundTripUsesAnIsolatedTarget()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var store = new CredentialStore("Dictator/Test/" + Guid.NewGuid());
+        try {
+            Assert.False(store.Exists); Assert.Null(store.Read());
+            store.Save("fixture-key-never-a-real-secret");
+            Assert.True(store.Exists); Assert.Equal("fixture-key-never-a-real-secret", store.Read());
+            Assert.Throws<InvalidOperationException>(() => store.Save("bad key with whitespace"));
+            Assert.Equal("fixture-key-never-a-real-secret", store.Read());
+            store.Remove(); Assert.False(store.Exists); Assert.Null(store.Read());
+        } finally { store.Remove(); }
     }
 
     [Fact]

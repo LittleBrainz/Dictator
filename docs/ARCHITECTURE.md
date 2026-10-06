@@ -1,4 +1,4 @@
-# Architecture through Phase 3
+# Architecture through Phase 4
 
 The v2 specification is in `SPECIFICATION.md`, updated with the user's explicit
 6 October 2026 deployment and user-data requirements.
@@ -6,8 +6,8 @@ Phase 0 established the build and deployment chain and passed user acceptance.
 Phase 1 adds resident lifecycle, a native tray and Widget shell, Settings and
 preferences; the user accepted both phases. Phase 2 adds global input, cursor
 eligibility and simulated interaction. Phase 3 adds native microphone capture
-and real levels. Transcription, insertion, networking, history and credentials
-remain future work.
+and real levels. Phase 4 adds managed streaming transcription and secure API
+credentials. Insertion, rewriting and history remain future work.
 
 `Dictator.App` is an unpackaged C# 14/.NET 10 WinUI 3 executable. It creates
 **Dictator Settings** quietly and keeps the Widget and tray available until Quit.
@@ -311,3 +311,70 @@ The inactive red microphone has no diagonal slash and a stronger red glow. Live
 text and long hint motion are 96 and 36 DIP/s respectively, 1.5 times v0.2.6.
 The accepted geometry, conditional strip, bright-blue 12 DIP hints, transparent
 1 DIP gap, waveform-only dragging and full-height work-area bounds remain.
+
+
+## Phase 4 streaming transcription
+
+The provider-neutral Core contract separates PCM delivery, session state, live
+deltas, final text, cancellation and sanitized errors from OpenAI event names.
+The production provider uses .NET ClientWebSocket with normal TLS validation and
+Bearer authentication at `wss://api.openai.com/v1/realtime?intent=transcription`.
+The centrally configured model is `gpt-live-transcribe` with low delay, verified
+against the official guide on 6 October 2026. Session updates explicitly request
+transcription, PCM16 mono at 24 kHz and null turn detection. This model streams
+before commit and does not support server/semantic VAD. A Talk session is one
+turn; releasing/toggling off commits it. No translation prompt or forced language
+is sent. Effective configuration is acknowledged before any audio is transmitted.
+
+Official sources:
+
+- https://developers.openai.com/api/docs/guides/realtime-transcription
+- https://developers.openai.com/api/docs/models/gpt-live-transcribe
+- https://developers.openai.com/api/docs/guides/voice-websockets?api=realtime
+
+A managed windowed-sinc low-pass resampler retains fixed history and phase across
+chunks, converts the native source rate to 24 kHz PCM16 and flushes its small tail.
+It runs only on the existing non-RT managed consumer. The outbound queue holds at
+most 256 chunks (48000 bytes each maximum); overflow fails rather than blocking
+capture or silently losing audio. There is no audio retry/replay cache. Successful
+transfer owns the PCM array and clears it after send/discard; JSON wire buffers,
+resampling history and native scratch/consumed slots are also cleared. Base64 and
+text strings remain transient managed strings; no audio/transcript file is created.
+
+Normal Talk stop closes the device on the native worker but preserves its bounded
+final chunks in a draining state. The same consumer reads them and flushes the
+resampler before completing the provider queue and committing the turn. Once the
+ring empties, native state becomes idle. This avoids UI/network waits and clipping
+the last queued audio. Focus loss, errors, close, rebind, device changes, restart
+and Quit retain immediate invalidation/purge behavior. A new capture epoch rejects
+old native chunks; a new presentation epoch rejects old text even in the same field.
+
+The provider bounds each response to 256 KiB, total transcript text to 65536 UTF-16
+units and its display queue to 128 events, splitting deltas without breaking surrogate
+pairs. A bounded UI drain coalesces text into the existing native ticker. Display
+backpressure clears only old ticker content; the authoritative final text remains
+complete in its separate bounded result. The upper strip retains its accepted
+visibility/geometry. Normal stop hides it; Speech settings offers the latest final
+transcript and explicit Copy, in memory only. It clears on the next successful Talk
+start and disappears on Quit. Opening Settings while capturing loses target eligibility and cancels that
+session. After a normal stop, the final transcript can finish in memory while
+Settings has focus; it never updates the former target or inserts text. A new Talk
+session, close, rebind, device change, restart or Quit still invalidates it.
+
+Connect/configuration acknowledgment, send and finalization timeouts are 10/10,
+5 and 15 seconds respectively. The background consumer can request native capture cancellation without waiting
+for UI dispatch after provider failure or detected audio loss. Connection failure
+closes capture, keeps the Widget
+available and shows a non-activating tray notice and Settings error. A later gesture
+creates a new connection; no automatic mid-session replay or silent continuation
+loses/duplicates dictated words. Authentication, access, quota and rate limits have
+separate safe messages where the protocol supplies that classification. Arbitrary
+server error messages are never surfaced or logged. Diagnostics reports only model,
+state, credential presence, audio metadata, final character count and static errors.
+
+`CredentialStore` uses generic Windows Credential Manager target `Dictator/OpenAI`
+with per-user local-machine persistence. The password entry is never populated
+from the stored key, is cleared after saving and can replace/remove the credential.
+Keys never enter settings JSON, IPC reports, diagnostics or files. CI uses isolated
+credential targets derived from its explicit scratch profiles; unit credentials
+use unique targets and are deleted in finally. UI smoke probes read no credential.
