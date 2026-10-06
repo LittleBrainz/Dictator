@@ -2,8 +2,10 @@
 #define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
+#include <shellapi.h>
 #include <objidl.h>
 #include <gdiplus.h>
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -15,6 +17,10 @@
 namespace {
 HWND editable{}, readonly_edit{}, button{};
 WNDPROC original_edit{};
+WNDPROC original_widget{};
+bool observe_moves{};
+RECT previous_position{};
+std::vector<RECT> applied_positions;
 int escapes{}, unrelated{};
 constexpr wchar_t sentinel[] = L"Phase 2 target text stays unchanged.";
 LRESULT CALLBACK edit_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
@@ -22,6 +28,22 @@ LRESULT CALLBACK edit_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
     if (message == WM_KEYDOWN && wp == VK_F6) ++unrelated;
     return CallWindowProcW(original_edit, hwnd, message, wp, lp);
 }
+LRESULT CALLBACK observe_widget(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
+    if (message == WM_WINDOWPOSCHANGED && observe_moves) {
+        RECT position{}; GetWindowRect(hwnd, &position);
+        if (!EqualRect(&position, &previous_position)) {
+            applied_positions.push_back(position); previous_position = position;
+        }
+    }
+    return CallWindowProcW(original_widget, hwnd, message, wp, lp);
+}
+struct position_observer {
+    HWND widget;
+    explicit position_observer(HWND window) : widget(window) {
+        original_widget = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(widget, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(observe_widget)));
+    }
+    ~position_observer() { SetWindowLongPtrW(widget, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(original_widget)); }
+};
 LRESULT CALLBACK fixture_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
     if (message == WM_CREATE) {
         editable = CreateWindowExW(0, L"EDIT", sentinel, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
@@ -220,7 +242,41 @@ int wmain(int argc, wchar_t** argv) {
     SetCursorPos(cursor.x, cursor.y);
     RECT dragged{}; GetWindowRect(widget, &dragged);
     CHECK(dragged.left != original.left || dragged.top != original.top);
-    for (double zoom : {.750, .866, 1., 1.155, 1.333}) CHECK(dictator_host_set_widget(host, 1, zoom, 0) == DICTATOR_OK);
+    {
+        // Observe actual applied positions, not just the final rectangle: a move
+        // outside the work area followed by a corrective move is still a failure.
+        position_observer observer(widget);
+        auto bounds = monitor.rcWork;
+        APPBARDATA taskbar{sizeof(taskbar)};
+        if (SHAppBarMessage(ABM_GETTASKBARPOS, &taskbar) && taskbar.uEdge == ABE_BOTTOM &&
+            MonitorFromRect(&taskbar.rc, MONITOR_DEFAULTTONEAREST) == MonitorFromWindow(widget, MONITOR_DEFAULTTONEAREST))
+            bounds.bottom = std::min(bounds.bottom, monitor.rcMonitor.bottom - (taskbar.rc.bottom - taskbar.rc.top));
+        const LONG mid_x = (monitor.rcMonitor.left + monitor.rcMonitor.right) / 2;
+        const LONG mid_y = (monitor.rcMonitor.top + monitor.rcMonitor.bottom) / 2;
+        const POINT edges[] = {{monitor.rcMonitor.left, mid_y}, {monitor.rcMonitor.right - 1, mid_y},
+            {mid_x, monitor.rcMonitor.top}, {mid_x, monitor.rcMonitor.bottom - 1}};
+        for (double zoom : {.750, .866, 1., 1.155, 1.333}) {
+            CHECK(dictator_host_set_widget(host, 1, zoom, 0) == DICTATOR_OK);
+            for (const auto& edge : edges) {
+                RECT start{}; GetWindowRect(widget, &start);
+                const int grab_x = (start.right - start.left) / 2;
+                const auto grab = MAKELPARAM(grab_x, 10); // Transcript/body drag surface.
+                CHECK(SetCursorPos(start.left + grab_x, start.top + 10));
+                SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, grab);
+                CHECK(SetCursorPos(edge.x, edge.y));
+                GetWindowRect(widget, &previous_position);
+                applied_positions.clear(); observe_moves = true;
+                SendMessageW(widget, WM_MOUSEMOVE, MK_LBUTTON, grab);
+                observe_moves = false;
+                SendMessageW(widget, WM_LBUTTONUP, 0, grab);
+                CHECK(applied_positions.size() == 1);
+                const auto& applied = applied_positions.front();
+                CHECK(applied.left >= bounds.left && applied.top >= bounds.top &&
+                    applied.right <= bounds.right && applied.bottom <= bounds.bottom);
+                CHECK(GetForegroundWindow() == target && SendMessageW(target, WM_APP + 10, 0, 0) == 1);
+            }
+        }
+    }
     GetWindowRect(widget, &dragged);
     SendMessageW(widget, WM_CLOSE, 0, 0);
     CHECK(dictator_host_set_widget(host, 1, 1.333, 0) == DICTATOR_OK);
@@ -285,5 +341,5 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(GetForegroundWindow() == target);
     CHECK(SendMessageW(widget, WM_MOUSEACTIVATE, 0, 0) == MA_NOACTIVATE);
     SetCursorPos(cursor.x, cursor.y);
-    std::cout << "Editable/read-only/disabled/non-text metadata; real global input, UK/US backslash, repeat, modifier release, Escape passthrough, unchanged target text/focus, recovery, drag, zoom, tooltip delay/copy/live update and microphone edges passed.\n";
+    std::cout << "Editable/read-only/disabled/non-text metadata; real global input, UK/US backslash, repeat, modifier release, Escape passthrough, unchanged target text/focus, recovery, drag without transient out-of-bounds moves at every zoom, tooltip delay/copy/live update and microphone edges passed.\n";
 }

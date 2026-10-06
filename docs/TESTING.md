@@ -47,7 +47,7 @@ not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.2.1** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.2.2** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -113,9 +113,11 @@ The native interaction test captures the actual HWND paint path in ready, Talkin
 and no-cursor states under `artifacts/test-results/widget`. It checks cyan/red
 quiet-line pixels with no vertical bars, taskbar clearance, left microphone input
 and right Settings/Close hit regions, in addition to existing focus/drag/zoom and
-ownership regressions. The user's Windows desktop acceptance confirmed Phase 2
+ownership regressions. A window-procedure observer records every applied drag
+position against all four screen edges at every zoom stop, requiring one bounded
+move per update instead of an out-of-bounds move followed by correction. The user's Windows desktop acceptance confirmed Phase 2
 before this visual refinement; repeat appearance and taskbar placement below for
-v0.2.1, including an auto-hidden taskbar and secondary monitors.
+v0.2.2, including an auto-hidden taskbar and secondary monitors.
 
 ## Phase 2 manual Windows 11 acceptance
 
@@ -138,7 +140,9 @@ v0.2.1, including an auto-hidden taskbar and secondary monitors.
    Hotkey with no valid cursor, retaining the target application's focus. Escape
    and unrelated shortcuts must continue to work in that application.
 5. Drag by the waveform body. Check each dedicated button does not drag. Close and
-   reopen: dragged position survives. Restart and fresh startup reset position.
+   reopen: dragged position survives. Drag hard against all four screen boundaries
+   and the taskbar at every zoom: no brief off-screen paint or taskbar overlap.
+   Restart and fresh startup reset position.
 6. On multiple monitors with mixed DPI and negative coordinates, drag, change all
    five zoom stops, change taskbar/work area, and disconnect a monitor. Confirm
    the complete Widget scales and stays within the available work area.

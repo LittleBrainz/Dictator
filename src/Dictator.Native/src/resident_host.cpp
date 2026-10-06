@@ -83,11 +83,16 @@ int bottom_taskbar_height(HMONITOR monitor, const RECT& screen) noexcept {
     EnumWindows(find_taskbar, reinterpret_cast<LPARAM>(&result));
     return result.height;
 }
-void place_widget(dictator_host* h, bool show) noexcept {
+void place_widget(dictator_host* h, bool show, const POINT* drag_position = nullptr) noexcept {
     if (h->placing) return;
     h->placing = true;
     MONITORINFO monitor{sizeof(monitor)};
-    const auto selected = relevant_monitor(h);
+    RECT old{}; GetWindowRect(h->widget, &old);
+    RECT candidate = old;
+    if (drag_position) OffsetRect(&candidate, drag_position->x - old.left, drag_position->y - old.top);
+    // Select the destination monitor from the requested rectangle without first
+    // moving the HWND there. Otherwise Windows can paint the unclamped position.
+    const auto selected = drag_position ? MonitorFromRect(&candidate, MONITOR_DEFAULTTONEAREST) : relevant_monitor(h);
     if (GetMonitorInfoW(selected, &monitor)) {
         UINT dpi_x{96}, dpi_y{96};
         if (FAILED(GetDpiForMonitor(selected, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y))) dpi_x = GetDpiForWindow(h->widget);
@@ -98,9 +103,8 @@ void place_widget(dictator_host* h, bool show) noexcept {
         const int clearance = taskbar_height > 0 ? taskbar_height / 2 : static_cast<int>(std::lround(24 * dpi_x / 96.0));
         const int width = std::min(static_cast<int>(std::lround(widget_design::width * scale)), static_cast<int>(work.right - work.left));
         const int height = std::min(static_cast<int>(std::lround(widget_design::height * scale)), static_cast<int>(work.bottom - work.top));
-        RECT old{}; GetWindowRect(h->widget, &old);
-        int x = h->dragged && h->positioned ? old.left : work.left + (work.right - work.left - width) / 2;
-        int y = h->dragged && h->positioned ? old.top : work.bottom - height - height / 2 - static_cast<int>(16 * scale) - clearance;
+        int x = drag_position ? drag_position->x : h->dragged && h->positioned ? old.left : work.left + (work.right - work.left - width) / 2;
+        int y = drag_position ? drag_position->y : h->dragged && h->positioned ? old.top : work.bottom - height - height / 2 - static_cast<int>(16 * scale) - clearance;
         x = std::clamp(x, static_cast<int>(work.left), static_cast<int>(work.right - width));
         y = std::clamp(y, static_cast<int>(work.top), static_cast<int>(work.bottom - height));
         SetWindowPos(h->widget, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | (show ? SWP_SHOWWINDOW : 0));
@@ -352,9 +356,9 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
     case WM_MOUSEMOVE: {
         if (h->dragging) {
             POINT cursor{}; GetCursorPos(&cursor);
-            SetWindowPos(hwnd, nullptr, h->window_origin.x + cursor.x - h->drag_origin.x,
-                h->window_origin.y + cursor.y - h->drag_origin.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
-            h->dragged = true; place_widget(h, true); hide_tooltip(h); return 0;
+            const POINT requested{h->window_origin.x + cursor.x - h->drag_origin.x,
+                h->window_origin.y + cursor.y - h->drag_origin.y};
+            h->dragged = true; place_widget(h, true, &requested); hide_tooltip(h); return 0;
         }
         const int region = hit_region(hwnd, lp);
         if (region != h->hover) {
