@@ -4,6 +4,8 @@
 #include <windowsx.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
+#include <objidl.h>
+#include <gdiplus.h>
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -11,11 +13,13 @@
 #include <iterator>
 #include "dictator_native.h"
 #include "target_probe.h"
+#include "widget_painter.h"
 
 struct dictator_host {
     HWND owner{}, widget{}, tooltip{};
     HICON icon{};
     HHOOK keyboard{};
+    ULONG_PTR graphics_token{};
     DWORD thread{GetCurrentThreadId()};
     uint32_t events{}, theme{}, modifiers{}, key{}, registered_key{};
     int hotkey_id{1}, hover{-1}, pressed_region{-1};
@@ -56,6 +60,29 @@ HMONITOR relevant_monitor(dictator_host* h) noexcept {
         return MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
     POINT cursor{}; GetCursorPos(&cursor); return MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
 }
+struct taskbar_bounds { HMONITOR monitor{}; RECT screen{}; int height{}; };
+BOOL CALLBACK find_taskbar(HWND window, LPARAM parameter) noexcept {
+    auto& result = *reinterpret_cast<taskbar_bounds*>(parameter);
+    wchar_t name[64]{}; GetClassNameW(window, name, 64);
+    if (wcscmp(name, L"Shell_TrayWnd") != 0 && wcscmp(name, L"Shell_SecondaryTrayWnd") != 0) return TRUE;
+    if (MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST) != result.monitor) return TRUE;
+    RECT rect{};
+    if (GetWindowRect(window, &rect) && rect.bottom >= result.screen.bottom - 2 &&
+        rect.right - rect.left >= (result.screen.right - result.screen.left) / 2 &&
+        rect.bottom - rect.top < (result.screen.bottom - result.screen.top) / 3)
+        result.height = std::max(result.height, static_cast<int>(rect.bottom - rect.top));
+    return TRUE;
+}
+int bottom_taskbar_height(HMONITOR monitor, const RECT& screen) noexcept {
+    taskbar_bounds result{monitor, screen};
+    // ABM_GETTASKBARPOS reports the full primary taskbar even when it is auto-hidden.
+    APPBARDATA bar{sizeof(bar)};
+    if (SHAppBarMessage(ABM_GETTASKBARPOS, &bar) && bar.uEdge == ABE_BOTTOM &&
+        MonitorFromRect(&bar.rc, MONITOR_DEFAULTTONEAREST) == monitor)
+        result.height = static_cast<int>(bar.rc.bottom - bar.rc.top);
+    EnumWindows(find_taskbar, reinterpret_cast<LPARAM>(&result));
+    return result.height;
+}
 void place_widget(dictator_host* h, bool show) noexcept {
     if (h->placing) return;
     h->placing = true;
@@ -65,16 +92,19 @@ void place_widget(dictator_host* h, bool show) noexcept {
         UINT dpi_x{96}, dpi_y{96};
         if (FAILED(GetDpiForMonitor(selected, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y))) dpi_x = GetDpiForWindow(h->widget);
         const auto scale = h->zoom * dpi_x / 96.0;
-        const auto& work = monitor.rcWork;
-        const int width = std::min(static_cast<int>(std::lround(270 * scale)), static_cast<int>(work.right - work.left));
-        const int height = std::min(static_cast<int>(std::lround(48 * scale)), static_cast<int>(work.bottom - work.top));
+        auto work = monitor.rcWork;
+        const int taskbar_height = bottom_taskbar_height(selected, monitor.rcMonitor);
+        if (taskbar_height > 0) work.bottom = std::min(work.bottom, monitor.rcMonitor.bottom - taskbar_height);
+        const int clearance = taskbar_height > 0 ? taskbar_height / 2 : static_cast<int>(std::lround(24 * dpi_x / 96.0));
+        const int width = std::min(static_cast<int>(std::lround(widget_design::width * scale)), static_cast<int>(work.right - work.left));
+        const int height = std::min(static_cast<int>(std::lround(widget_design::height * scale)), static_cast<int>(work.bottom - work.top));
         RECT old{}; GetWindowRect(h->widget, &old);
         int x = h->dragged && h->positioned ? old.left : work.left + (work.right - work.left - width) / 2;
-        int y = h->dragged && h->positioned ? old.top : work.bottom - height - height / 2 - static_cast<int>(16 * scale);
+        int y = h->dragged && h->positioned ? old.top : work.bottom - height - height / 2 - static_cast<int>(16 * scale) - clearance;
         x = std::clamp(x, static_cast<int>(work.left), static_cast<int>(work.right - width));
         y = std::clamp(y, static_cast<int>(work.top), static_cast<int>(work.bottom - height));
         SetWindowPos(h->widget, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | (show ? SWP_SHOWWINDOW : 0));
-        auto region = CreateRoundRectRgn(0, 0, width + 1, height + 1, height / 3, height / 3);
+        auto region = CreateRoundRectRgn(0, 0, width + 1, height + 1, static_cast<int>(24 * scale), static_cast<int>(24 * scale));
         if (region && !SetWindowRgn(h->widget, region, TRUE)) DeleteObject(region);
         h->positioned = true;
         InvalidateRect(h->widget, nullptr, FALSE);
@@ -90,12 +120,7 @@ bool dark_theme(const dictator_host* h) noexcept {
 }
 int hit_region(HWND hwnd, LPARAM point) noexcept {
     RECT r{}; GetClientRect(hwnd, &r);
-    const int x = GET_X_LPARAM(point), y = GET_Y_LPARAM(point);
-    if (x < 0 || y < 0 || x >= r.right || y >= r.bottom) return -1;
-    if (x >= r.right - r.bottom) return 3;
-    if (x >= r.right - 2 * r.bottom) return 2;
-    if (x >= r.right - 3 * r.bottom) return 1;
-    return 0;
+    return widget_design::hit_test(r.right, r.bottom, GET_X_LPARAM(point), GET_Y_LPARAM(point));
 }
 struct tooltip_copy { const wchar_t* lines[4]{}; int count{}, separator{-1}; };
 tooltip_copy tooltip_text(dictator_host* h, wchar_t* binding, size_t capacity) noexcept {
@@ -142,7 +167,10 @@ void show_tooltip(dictator_host* h) noexcept {
     width += 2 * pad;
     MONITORINFO monitor{sizeof(monitor)};
     GetMonitorInfoW(MonitorFromWindow(h->widget, MONITOR_DEFAULTTONEAREST), &monitor);
-    const auto& work = monitor.rcWork;
+    auto work = monitor.rcWork;
+        const int taskbar_height = bottom_taskbar_height(selected, monitor.rcMonitor);
+        if (taskbar_height > 0) work.bottom = std::min(work.bottom, monitor.rcMonitor.bottom - taskbar_height);
+        const int clearance = taskbar_height > 0 ? taskbar_height / 2 : static_cast<int>(std::lround(24 * dpi_x / 96.0));
     width = std::min(width, static_cast<int>(work.right - work.left));
     height = std::min(height, static_cast<int>(work.bottom - work.top));
     RECT r{}; GetWindowRect(h->widget, &r);
@@ -302,44 +330,14 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
     }
     return DefWindowProcW(hwnd, message, wp, lp);
 }
+void draw_widget(dictator_host* h, HWND hwnd, HDC destination) noexcept {
+    RECT rect{}; GetClientRect(hwnd, &rect);
+    widget_design::paint(destination, rect.right, rect.bottom, h->talking, h->current.eligible != 0,
+        h->hover, h->pressed_region, GetTickCount64());
+}
 void paint_widget(dictator_host* h, HWND hwnd) noexcept {
     PAINTSTRUCT paint{}; auto surface = BeginPaint(hwnd, &paint);
-    RECT r{}; GetClientRect(hwnd, &r);
-    auto dc = CreateCompatibleDC(surface); auto bitmap = CreateCompatibleBitmap(surface, r.right, r.bottom);
-    auto old_bitmap = SelectObject(dc, bitmap);
-    const bool dark = dark_theme(h);
-    auto background = CreateSolidBrush(dark ? RGB(28, 32, 40) : RGB(245, 247, 251));
-    FillRect(dc, &r, background); DeleteObject(background);
-    const COLORREF state = h->talking ? RGB(35, 190, 105) : h->current.eligible ?
-        (dark ? RGB(164, 175, 195) : RGB(88, 102, 126)) : RGB(218, 65, 78);
-    const int height = r.bottom, body_right = r.right - 3 * height;
-    auto pen = CreatePen(PS_SOLID, std::max(2, height / 20), state); auto old_pen = SelectObject(dc, pen);
-    for (int i = 0; i < 17; ++i) {
-        const int x = height / 3 + i * std::max(1, (body_right - 2 * height / 3) / 16);
-        const double wave = h->talking ? std::abs(std::sin(static_cast<double>(GetTickCount64()) / 190.0 + i * .65)) : 0.0;
-        const int length = h->talking ? static_cast<int>((.12 + .5 * wave) * height) : std::max(2, height / 16);
-        MoveToEx(dc, x, (height - length) / 2, nullptr); LineTo(dc, x, (height + length) / 2);
-    }
-    // Microphone silhouette, scaled with the complete Widget.
-    const int cx = r.right - 5 * height / 2, cy = height / 2;
-    auto fill = CreateSolidBrush(state); auto old_brush = SelectObject(dc, fill);
-    RoundRect(dc, cx - height / 12, cy - height / 4, cx + height / 12, cy + height / 10, height / 6, height / 6);
-    SelectObject(dc, GetStockObject(NULL_BRUSH));
-    Arc(dc, cx - height / 6, cy - height / 8, cx + height / 6, cy + height / 4,
-        cx - height / 6, cy, cx + height / 6, cy);
-    MoveToEx(dc, cx, cy + height / 4, nullptr); LineTo(dc, cx, cy + height / 3);
-    MoveToEx(dc, cx - height / 9, cy + height / 3, nullptr); LineTo(dc, cx + height / 9, cy + height / 3);
-    if (!h->current.eligible) { MoveToEx(dc, cx - height / 4, cy + height / 4, nullptr); LineTo(dc, cx + height / 4, cy - height / 4); }
-    SelectObject(dc, old_brush); DeleteObject(fill); SelectObject(dc, old_pen); DeleteObject(pen);
-    auto font = widget_font(h, 18); auto old_font = SelectObject(dc, font);
-    SetBkMode(dc, TRANSPARENT); SetTextColor(dc, dark ? RGB(235, 240, 248) : RGB(45, 54, 70));
-    RECT tools{r.right - 2 * height, 0, r.right - height, height};
-    DrawTextW(dc, L"⚙", -1, &tools, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    RECT close{r.right - height, 0, r.right, height};
-    DrawTextW(dc, L"×", -1, &close, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(dc, old_font); DeleteObject(font);
-    BitBlt(surface, 0, 0, r.right, r.bottom, dc, 0, 0, SRCCOPY);
-    SelectObject(dc, old_bitmap); DeleteObject(bitmap); DeleteDC(dc); EndPaint(hwnd, &paint);
+    draw_widget(h, hwnd, surface); EndPaint(hwnd, &paint);
 }
 LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexcept {
     auto* h = reinterpret_cast<dictator_host*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
@@ -389,6 +387,7 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
         if (h->pressed_region == 1) input_press(h, 2, 2, GetTickCount64());
         h->pressed_region = -1; h->dragging = false; return 0;
     case WM_PAINT: paint_widget(h, hwnd); return 0;
+    case WM_PRINTCLIENT: draw_widget(h, hwnd, reinterpret_cast<HDC>(wp)); return 0;
     }
     return DefWindowProcW(hwnd, message, wp, lp);
 }
@@ -401,6 +400,8 @@ dictator_result DICTATOR_CALL dictator_host_create(uint32_t abi, dictator_host**
     if (input_host) return DICTATOR_PLATFORM_ERROR;
     auto* h = new (std::nothrow) dictator_host;
     if (!h) return DICTATOR_OUT_OF_MEMORY;
+    Gdiplus::GdiplusStartupInput graphics;
+    if (Gdiplus::GdiplusStartup(&h->graphics_token, &graphics, nullptr) != Gdiplus::Ok) { delete h; return DICTATOR_PLATFORM_ERROR; }
     auto instance = GetModuleHandleW(nullptr);
     WNDCLASSW owner{}; owner.lpfnWndProc = owner_proc; owner.hInstance = instance; owner.lpszClassName = owner_class;
     WNDCLASSW widget{}; widget.lpfnWndProc = widget_proc; widget.hInstance = instance; widget.lpszClassName = widget_class;
@@ -408,11 +409,11 @@ dictator_result DICTATOR_CALL dictator_host_create(uint32_t abi, dictator_host**
     WNDCLASSW tooltip{}; tooltip.lpfnWndProc = tooltip_proc; tooltip.hInstance = instance; tooltip.lpszClassName = tooltip_class;
     if ((!RegisterClassW(&owner) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) ||
         (!RegisterClassW(&widget) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) ||
-        (!RegisterClassW(&tooltip) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)) { delete h; return DICTATOR_PLATFORM_ERROR; }
+        (!RegisterClassW(&tooltip) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)) { Gdiplus::GdiplusShutdown(h->graphics_token); delete h; return DICTATOR_PLATFORM_ERROR; }
     h->owner = CreateWindowExW(WS_EX_TOOLWINDOW, owner_class, L"Dictator Resident", WS_POPUP,
         0, 0, 0, 0, nullptr, nullptr, instance, h);
     h->widget = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
-        widget_class, L"Dictator Widget", WS_POPUP, 0, 0, 270, 48, h->owner, nullptr, instance, h);
+        widget_class, L"Dictator Widget", WS_POPUP, 0, 0, widget_design::width, widget_design::height, h->owner, nullptr, instance, h);
     h->tooltip = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
         tooltip_class, L"Dictator Widget Tooltip", WS_POPUP | WS_BORDER, 0, 0, 0, 0, h->owner, nullptr, instance, h);
     h->icon = make_icon();
@@ -439,6 +440,7 @@ void DICTATOR_CALL dictator_host_destroy(dictator_host* h) noexcept {
     if (h->widget) DestroyWindow(h->widget);
     if (h->owner) DestroyWindow(h->owner);
     if (h->icon) DestroyIcon(h->icon);
+    if (h->graphics_token) Gdiplus::GdiplusShutdown(h->graphics_token);
     delete h;
 }
 uint32_t DICTATOR_CALL dictator_host_poll_events(dictator_host* h) noexcept {

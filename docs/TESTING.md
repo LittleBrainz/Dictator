@@ -47,7 +47,7 @@ not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.2.0** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.2.1** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -107,9 +107,23 @@ against that fixture. IPC snapshots verify tap toggle, hold release, eligibility
 loss, no-cursor suppression/recovery and clean Quit. JSON evidence is saved beside
 the lifecycle evidence. The fixture executable is not shipped to users.
 
+## Widget design refinement evidence
+
+The native interaction test captures the actual HWND paint path in ready, Talking
+and no-cursor states under `artifacts/test-results/widget`. It checks cyan/red
+quiet-line pixels with no vertical bars, taskbar clearance, left microphone input
+and right Settings/Close hit regions, in addition to existing focus/drag/zoom and
+ownership regressions. The user's Windows desktop acceptance confirmed Phase 2
+before this visual refinement; repeat appearance and taskbar placement below for
+v0.2.1, including an auto-hidden taskbar and secondary monitors.
+
 ## Phase 2 manual Windows 11 acceptance
 
-1. Focus Notepad and a browser text field. Tap the default Hotkey: green microphone
+1. On fresh startup check the rounded blue frame, left microphone, empty dark
+   transcript strip and right Settings/Close buttons. The inactive microphone is
+   red and slashed. With a valid cursor the waveform is a cyan straight line;
+   without one it is a red straight line. Check additional clearance above the
+   taskbar, including auto-hide. Focus Notepad and a browser text field. Tap the default Hotkey: green microphone
    and simulated waveform start on press and remain active after a short release.
    Tap again: stop on release, retaining focus and leaving text/selection unchanged.
 2. From off, hold at least 500 ms: active while held, stop on release. Repeat using
