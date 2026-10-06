@@ -1,15 +1,16 @@
-# Architecture through Phase 1
+# Architecture through Phase 2
 
 The v2 specification is in `SPECIFICATION.md`, updated with the user's explicit
 6 October 2026 deployment and user-data requirements.
 Phase 0 established the build and deployment chain and passed user acceptance.
 Phase 1 adds resident lifecycle, a native tray and Widget shell, Settings and
-preferences. Dictation, audio capture, global Hotkey interaction, networking,
-history, and credentials remain future work.
+preferences; the user accepted both phases. Phase 2 adds global input, cursor
+eligibility and simulated interaction. Audio capture, transcription, insertion,
+networking, history and credentials remain future work.
 
 `Dictator.App` is an unpackaged C# 14/.NET 10 WinUI 3 executable. It creates
 **Dictator Settings** quietly and keeps the Widget and tray available until Quit.
-`Dictator.Core` contains UI-independent build identity and preferences. `Dictator.Native` is a C++23 DLL with ABI 1.
+`Dictator.Core` contains UI-independent build identity, preferences and preview gesture logic. `Dictator.Native` is a C++23 DLL with ABI 1.
 Core and interop tests run through xUnit; native tests run through CTest.
 The interop tests compile the production interop source, without referencing WinUI.
 
@@ -36,7 +37,7 @@ Sources:
 ## ABI and ownership
 
 `src/Dictator.Native/include/dictator_native.h` is the contract. It exports only C
-functions, fixed-width integers, one opaque handle, and a 24-byte sized struct.
+functions, fixed-width integers, opaque handles, and fixed-layout metadata structs.
 `LibraryImport` declares explicit cdecl calls. `NativeContext` owns exactly one
 handle through SafeHandle. No C++ class, STL object, managed callback, or exception
 crosses the boundary. UTF-16 lengths count code units; output includes a NUL and
@@ -44,7 +45,8 @@ remains caller-owned. Embedded NUL and surrogate pairs survive a round-trip.
 
 Polling is synchronous on the caller's non-real-time consumer thread. Calls for
 one handle are serialized. The snapshot records both its creation and polling
-thread; tests prove polling from a second thread. No callback thread exists.
+thread; tests prove polling from a second thread. The Phase 0 probe creates no callback thread. The resident surface has its own
+UI-thread input/window callbacks and a metadata-only accessibility worker.
 Balanced live-handle counts establish simple allocation-cycle ownership; this
 does not claim a comprehensive operating-system memory leak audit.
 
@@ -177,4 +179,50 @@ from the DLL resource and releases it with DestroyIcon.
 The Actions artifact is `Dictator v<version>`, so its downloaded ZIP includes the
 version. The name comes from staged build-info.json, whose product version comes
 from Directory.Build.props. The application root still contains only Dictator.exe,
-README.txt and lib. Hotkey storage remains Phase 1; global interaction is Phase 2.
+README.txt and lib. Global Hotkey interaction is included in Phase 2.
+
+## Phase 2 input and Widget
+
+C# `PreviewInteraction` owns the 500 ms gesture rules and active target token.
+Monotonic timestamps captured at the input edge define tap versus hold; dispatcher
+and provider latency cannot reset the boundary. Repeat is ignored, a source owns
+its release, and eligibility/identity changes cancel active state.
+
+The native surface reserves the combination using RegisterHotKey (including
+conflict detection), and a low-level keyboard hook captures press/release while
+consuming only the matching key gesture. Modifier release order does not change
+the main-key release. Escape is never registered or consumed. The default
+backslash resolves against the focused application's keyboard layout, including
+UK OEM102 and US OEM5. A schema-1 optional `layoutBackslash` flag defaults to true
+for compatibility with Phase 1 preferences; manually captured bindings set it
+false so UK Ctrl+Alt+# remains distinct from the default backslash. A failed rebind preserves the old reservation; a settings
+write failure attempts to restore it and reports any rollback failure.
+
+A dedicated MTA worker polls UI Automation metadata every 60 ms and again for
+each input edge. Cache requests contain only process, focus, enabled and pattern
+availability/read-only properties; no Name, Value.Value, transcript, or target
+text is fetched. ValuePattern must be writable. Document/contenteditable targets
+may use TextPattern2's active caret range and read-only attribute. Unrecognized
+providers fail closed. Runtime ID, foreground/focus HWND, process, executable key
+and monitor identify the target. Target identity is never written to diagnostics.
+Provider connection/transaction timeouts are 200 ms; the UI never waits on a
+provider call. Bounded queues carry metadata and timestamped edges back to C#.
+Worker shutdown joins before the host's windows are destroyed.
+
+The UI thread additionally rejects changed foreground/focus HWND or metadata older
+than 400 ms. Native rendering stops immediately when a new invalid or changed
+target snapshot arrives; C# cancels its gesture on the next 20 ms dispatcher tick.
+No microphone, network request, insertion API or audio buffer is introduced.
+
+The native Widget/tooltip use WS_EX_NOACTIVATE and MA_NOACTIVATE, SWP_NOACTIVATE
+placement, and do not call SetForegroundWindow during ordinary interaction. Tools
+is the explicit exception that asks C# to activate Settings. A 270 by 48 DIP
+Widget scales with DPI and the five persisted zoom stops. Body dragging is kept
+only in native host memory, clamped to monitor work areas and retained through
+close/reopen. Default placement is bottom-center, raised by half the scaled height
+plus the normal margin. Display/setting/DPI changes re-clamp placement.
+
+A separate non-activating tooltip computes its work-area-clamped position before
+showing, starts after 1000 ms in a hit region, and repaints contextual copy when
+eligibility or Talking changes. It draws real separators and the configured
+Hotkey. The active waveform is explicitly simulated until Phase 3.

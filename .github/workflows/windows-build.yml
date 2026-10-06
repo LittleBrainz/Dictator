@@ -39,7 +39,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: Phase1-test-results
+          name: Phase2-test-results
           path: |
             artifacts/test-results/
             artifacts/native/Testing/Temporary/LastTest.log

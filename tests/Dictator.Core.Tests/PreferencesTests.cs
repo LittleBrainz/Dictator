@@ -16,6 +16,18 @@ public sealed class PreferencesTests : IDisposable
         Assert.False(Directory.Exists(directory));
     }
     [Fact]
+    public void LegacyDefaultFollowsLayoutButCapturedOemKeyCanRemainLiteral()
+    {
+        Directory.CreateDirectory(directory);
+        var store = new PreferencesStore(directory);
+        File.WriteAllText(store.FilePath, "{\"schemaVersion\":1,\"hotkey\":{\"modifiers\":3,\"key\":220}}");
+        Assert.True(store.Load().Hotkey.LayoutBackslash);
+        var literal = new Preferences { Hotkey = new(3, 0xDC, LayoutBackslash: false) };
+        store.Save(literal);
+        Assert.Equal(literal, store.Load());
+        Assert.Equal("Ctrl+Alt+Key 0xDC", literal.Hotkey.Display);
+    }
+    [Fact]
     public void AllPreferencesRoundTripWithNoTemporaryFiles()
     {
         var store = new PreferencesStore(directory);

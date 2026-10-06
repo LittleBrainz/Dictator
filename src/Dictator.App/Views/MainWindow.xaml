@@ -29,7 +29,7 @@
           </ComboBox>
           <StackPanel Spacing="8">
             <TextBox x:Name="HotkeyBox" Header="Hotkey" IsReadOnly="True" KeyDown="OnHotkeyDown" />
-            <TextBlock Text="Select the field and press a key combination to save it. Hotkey interaction arrives with the Widget preview."
+            <TextBlock Text="Select the field and press a key combination to save it. Tap to start Talking; hold for at least half a second to stop on release."
                        TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <Button x:Name="ResetHotkeyButton" Content="Restore Ctrl+Alt+\" Click="OnResetHotkey" />
           </StackPanel>
@@ -40,6 +40,7 @@
                   ValueChanged="OnZoomChanged" MaxWidth="400" HorizontalAlignment="Stretch"
                   AutomationProperties.Name="Widget Zoom" />
           <TextBlock Text="Choose one of five sizes. The middle stop is the default." TextWrapping="Wrap" />
+          <TextBlock Text="The waveform is a simulated preview. Audio capture and transcription will be added in later phases." TextWrapping="Wrap" />
           <Button Content="Open Widget" Click="OnOpenWidget" />
         </StackPanel>
         <StackPanel x:Name="DiagnosticsPage" Visibility="Collapsed" Spacing="12">

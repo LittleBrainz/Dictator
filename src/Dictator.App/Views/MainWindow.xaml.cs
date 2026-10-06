@@ -1,4 +1,5 @@
 using Dictator.Core;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -50,8 +51,8 @@ public sealed partial class MainWindow : Window
             AppTheme.Light => ElementTheme.Light, AppTheme.Dark => ElementTheme.Dark, _ => ElementTheme.Default
         };
         Navigation.RequestedTheme = DiagnosticsRoot.RequestedTheme;
-        SettingsError.IsOpen = owner.SettingsError is not null;
-        SettingsError.Message = owner.SettingsError ?? "";
+        SettingsError.IsOpen = owner.SettingsError is not null || owner.HotkeyError is not null;
+        SettingsError.Message = owner.SettingsError ?? owner.HotkeyError ?? "";
         StartupSwitch.IsEnabled = owner.Store.Error is null;
         ThemeChoice.IsEnabled = owner.Store.Error is null;
         HotkeyBox.IsEnabled = owner.Store.Error is null;
@@ -90,7 +91,10 @@ public sealed partial class MainWindow : Window
             (Down(VirtualKey.Shift) ? 4 : 0) | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);
         if (modifiers == 0) return;
         args.Handled = true;
-        owner.Save(owner.Preferences with { Hotkey = new(modifiers, (int)args.Key) });
+        var backslash = (MapVirtualKeyExW((uint)args.Key, 2, GetKeyboardLayout(0)) & 0x7FFFFFFF) == '\\';
+        owner.Save(owner.Preferences with {
+            Hotkey = backslash ? new(modifiers, 0xDC) : new(modifiers, (int)args.Key, LayoutBackslash: false)
+        });
     }
     private void OnResetHotkey(object sender, RoutedEventArgs args) => owner.Save(owner.Preferences with { Hotkey = new() });
     private void OnOpenWidget(object sender, RoutedEventArgs args) => owner.OpenWidget();
@@ -100,4 +104,8 @@ public sealed partial class MainWindow : Window
         content.SetText(owner.DiagnosticsText);
         Clipboard.SetContent(content);
     }
+    [LibraryImport("user32.dll")]
+    private static partial nint GetKeyboardLayout(uint thread);
+    [LibraryImport("user32.dll")]
+    private static partial uint MapVirtualKeyExW(uint key, uint type, nint layout);
 }

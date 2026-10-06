@@ -22,6 +22,8 @@ public partial class App : Application
     private double widgetReadyMs;
     private double? settingsActivationMs;
     private readonly Queue<string> recentErrors = new();
+    private readonly PreviewInteraction preview = new();
+    internal string? HotkeyError { get; private set; }
     internal bool RestartRequested { get; private set; }
     internal bool IsProbe => options.IsProbe;
     internal bool IsStopping => stopping;
@@ -40,6 +42,8 @@ public partial class App : Application
         Last Settings activation call duration (not first paint): {(settingsActivationMs.HasValue ? settingsActivationMs.Value.ToString("F2") + " ms" : "not activated")}
         Provider connection: not configured
         Current settings error: {SettingsError ?? "none"}
+        Hotkey: {Preferences.Hotkey.Display}; registration: {HotkeyError ?? "ready"}
+        Widget mode: simulated interaction preview (no audio capture)
         Recent sanitized errors: {(recentErrors.Count == 0 ? "none" : string.Join(Environment.NewLine, recentErrors))}
         """;
 
@@ -75,10 +79,11 @@ public partial class App : Application
             return;
         }
         host = new ResidentHost();
+        if (!host.BindHotkey(Preferences.Hotkey)) HotkeyError = "The Hotkey is already in use or could not be registered. Choose another combination.";
         OpenWidget();
         managedReadyMs = managedTimer.Elapsed.TotalMilliseconds;
         widgetReadyMs = (DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()).TotalMilliseconds;
-        events = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        events = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
         events.Tick += (_, _) =>
         {
             var pending = host?.PollEvents() ?? 0;
@@ -86,6 +91,26 @@ public partial class App : Application
             if ((pending & 2) != 0) OpenSettings();
             if ((pending & 4) != 0) ScheduleShutdown(restart: true);
             if ((pending & 8) != 0) ScheduleShutdown(restart: false);
+            if ((pending & 16) != 0)
+            {
+                HotkeyError = "The Hotkey could not be registered for this keyboard layout. Choose another combination.";
+                settings?.RefreshPreferences();
+            }
+            if ((pending & 32) != 0) preview.Cancel();
+            if (!stopping && host is not null)
+            {
+                var target = host.Target;
+                preview.RefreshTarget(target.Eligible != 0 ? target.Token : 0);
+                while (host.TryInput(out var input))
+                {
+                    if (input.Down == 1)
+                        preview.Press((PreviewInput)input.Source, input.Timestamp,
+                            input.Target == target.Token && target.Eligible != 0 ? target.Token : 0);
+                    else if (input.Down == 2) preview.CancelInput((PreviewInput)input.Source);
+                    else preview.Release((PreviewInput)input.Source, input.Timestamp);
+                }
+                host.SetPreview(preview.Talking ? preview.Target : 0);
+            }
         };
         events.Start();
         ResidentReady.TrySetResult(true);
@@ -101,15 +126,31 @@ public partial class App : Application
     }
     internal void Save(Preferences candidate)
     {
+        var rebound = false;
         try
         {
+            candidate.Validate();
+            if (Store.Error is not null) throw new InvalidOperationException(Store.Error);
+            if (host is not null && (candidate.Hotkey != Preferences.Hotkey || HotkeyError is not null))
+            {
+                if (!host.BindHotkey(candidate.Hotkey))
+                {
+                    HotkeyError = "The Hotkey is already in use or could not be registered. Choose another combination.";
+                    settings?.RefreshPreferences();
+                    return;
+                }
+                rebound = true;
+            }
             Store.Save(candidate);
             Preferences = candidate;
+            if (rebound) { HotkeyError = null; preview.Cancel(); }
             SettingsError = Store.Error;
             if (host is not null) host.SetWidget(IsWindowVisible(host.WidgetHandle) != 0, Preferences);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
         {
+            if (rebound && host is not null && !host.BindHotkey(Preferences.Hotkey))
+                HotkeyError = "The previous Hotkey could not be restored. Choose another combination.";
             SettingsError = Store.Error ?? ("The preference could not be saved. " + error.Message);
             RememberError(SettingsError);
         }
@@ -177,17 +218,25 @@ public partial class App : Application
         if (recentErrors.Count == 8) recentErrors.Dequeue();
         recentErrors.Enqueue($"{DateTime.UtcNow:O} {message}");
     }
-    private string Snapshot() => JsonSerializer.Serialize(new {
+    private string Snapshot()
+    {
+        var target = host?.Target ?? default;
+        return JsonSerializer.Serialize(new {
         status = "ok", processId = Environment.ProcessId,
         settingsTitle = settings?.Title, settingsHandle = (long)(settings?.Handle ?? 0),
         settingsVisible = settings is not null && IsWindowVisible(settings.Handle) != 0,
         settingsWasActivated = settings?.WasActivated ?? false,
         widgetHandle = (long)(host?.WidgetHandle ?? 0),
         widgetVisible = host is not null && IsWindowVisible(host.WidgetHandle) != 0,
+        previewTalking = preview.Talking, targetEligible = target.Eligible != 0,
+        targetProcessId = target.ProcessId, targetForeground = (long)target.Foreground,
+        targetFocus = (long)target.Focus, targetReason = target.Reason, targetStatus = target.Status,
+        hotkeyError = HotkeyError,
         trayReady = host?.TrayReady ?? false,
         preferences = Preferences, settingsError = SettingsError, startupEnabled = Startup.Enabled,
         settingsPath = Store.FilePath, managedReadyMs, widgetReadyMs
-    });
+        });
+    }
 
     private async void ScheduleShutdown(bool restart)
     {

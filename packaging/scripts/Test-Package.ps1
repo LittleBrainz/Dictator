@@ -129,6 +129,7 @@ try {
     }
 
     & "$PSScriptRoot/Test-Lifecycle.ps1" -PackageRoot $extracted -EvidenceRoot $sandbox
+    & "$PSScriptRoot/Test-Preview.ps1" -PackageRoot $extracted -EvidenceRoot $sandbox
 
     # Useful dependency error is also part of the staged product contract.
     Remove-Item "$extracted/lib/Native/Dictator.Native.dll"
