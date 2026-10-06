@@ -6,6 +6,16 @@ int main() {
     CHECK(widget_design::hover_opacity(900) == 0 && widget_design::hover_opacity(1000) == 0);
     CHECK(std::abs(widget_design::hover_opacity(1120) - .5f) < .001f);
     CHECK(widget_design::hover_opacity(1240) == 1 && widget_design::hover_opacity(5000) == 1);
+    // A long hover message repeats immediately, with just its measured separator.
+    // Its phase is continuous across the wrap: moving to the next copy leaves
+    // every visible glyph in the same position instead of restarting the message.
+    CHECK(widget_design::hint_scroll_x(0, 100000) == 9);
+    CHECK(widget_design::hint_scroll_x(300, 1200) == 9);
+    CHECK(std::abs(widget_design::hint_scroll_x(300, 2200) + 15) < .001f);
+    const auto before_wrap = widget_design::hint_scroll_x(300, 13690);
+    const auto after_wrap = widget_design::hint_scroll_x(300, 13710);
+    CHECK(std::abs((before_wrap + 300) - after_wrap - .48f) < .001f);
+    CHECK(std::abs(widget_design::hint_scroll_x(300, 26200) - 9) < .001f);
     widget_design::ticker_text ticker;
     CHECK(ticker.append(L"First ", 30, 1000));
     ticker.advance(1250);

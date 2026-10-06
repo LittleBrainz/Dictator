@@ -78,10 +78,10 @@ void spotlight(Graphics& g, REAL x, REAL y, REAL w, REAL h, Color center) noexce
     light.SetSurroundColors(&edge, &count); g.FillPath(&light, &area);
 }
 void draw_text(Graphics& g, const wchar_t* text, int count, REAL x, Color color) noexcept {
-    Font font(L"Segoe UI", 14.f, FontStyleRegular, UnitPixel);
+    Font font(L"Segoe UI", text_font_size, FontStyleRegular, UnitPixel);
     StringFormat format(StringFormat::GenericTypographic());
     format.SetFormatFlags(StringFormatFlagsNoWrap | StringFormatFlagsMeasureTrailingSpaces);
-    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 2.2f), &format, &ink);
+    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 5.4f), &format, &ink);
 }
 }
 HRGN window_region(int client_width, int client_height) noexcept {
@@ -99,7 +99,7 @@ HRGN window_region(int client_width, int client_height) noexcept {
 }
 float measure_text(const wchar_t* text, int count) noexcept {
     Bitmap pixel(1, 1, PixelFormat32bppPARGB); Graphics g(&pixel);
-    Font font(L"Segoe UI", 14.f, FontStyleRegular, UnitPixel);
+    Font font(L"Segoe UI", text_font_size, FontStyleRegular, UnitPixel);
     StringFormat format(StringFormat::GenericTypographic());
     format.SetFormatFlags(StringFormatFlagsNoWrap | StringFormatFlagsMeasureTrailingSpaces);
     RectF size;
@@ -118,13 +118,17 @@ int hit_test(int client_width, int client_height, int x, int y) noexcept {
 }
 void paint(HDC destination, int client_width, int client_height,
     bool talking, bool eligible, int hover, int pressed, ULONGLONG timestamp,
-    const ticker_text& ticker, const wchar_t* hint, float hint_alpha, float hint_x) noexcept {
+    const ticker_text& ticker, const wchar_t* hint, float hint_alpha, float hint_x,
+    float hint_width, float hint_period) noexcept {
     if (client_width <= 0 || client_height <= 0) return;
     Bitmap frame(client_width, client_height, PixelFormat32bppPARGB); Graphics g(&frame);
     g.SetSmoothingMode(SmoothingModeAntiAlias); g.SetPixelOffsetMode(PixelOffsetModeHalf);
     g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit); g.Clear(Color(0, 0, 0, 0));
     g.ScaleTransform(static_cast<REAL>(client_width) / width, static_cast<REAL>(client_height) / height);
-    capsule(g, 0, 24, true); capsule(g, 28, 37, false);
+    capsule(g, 0, text_height, true);
+    const auto controls = g.Save();
+    g.TranslateTransform(0, -2); // Preserve control sizes; halve only the inter-panel gap.
+    capsule(g, 28, 37, false);
     const bool active = talking && eligible;
     const Color mic_color = active ? Color(255, 25, 255, 123) : Color(255, 255, 57, 77);
     {
@@ -168,6 +172,7 @@ void paint(HDC destination, int client_width, int client_height,
     button(g, 253, 46.5f, 11, hover == 3, pressed == 3, Color(255, 50, 194, 255));
     line(g, Color(255, 242, 250, 255), 1.7f, 249.2f, 42.7f, 256.8f, 50.3f);
     line(g, Color(255, 242, 250, 255), 1.7f, 249.2f, 50.3f, 256.8f, 42.7f);
+    g.Restore(controls);
     {
         const auto clip = g.Save(); g.SetClip(RectF(9, 2, 252, 20), CombineModeIntersect);
         if (active) {
@@ -176,7 +181,13 @@ void paint(HDC destination, int client_width, int client_height,
                 draw_text(g, part.text.data(), static_cast<int>(part.text.size()), x, Color(255, 249, 253, 255)); x += part.width;
             }
         } else if (hint && hint_alpha > 0) {
-            draw_text(g, hint, -1, hint_x, Color(static_cast<BYTE>(std::clamp(hint_alpha, 0.f, 1.f) * 255), 67, 179, 255));
+            const Color ink(static_cast<BYTE>(std::clamp(hint_alpha, 0.f, 1.f) * 255), 67, 179, 255);
+            draw_text(g, hint, -1, hint_x, ink);
+            if (hint_period > 0) {
+                draw_text(g, hint_separator, -1, hint_x + hint_width, ink);
+                // Draw the next copy now, rather than waiting for the first to disappear.
+                draw_text(g, hint, -1, hint_x + hint_period, ink);
+            }
         }
         g.Restore(clip);
     }

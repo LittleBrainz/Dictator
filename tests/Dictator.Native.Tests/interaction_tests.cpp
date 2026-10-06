@@ -106,11 +106,11 @@ bool capture(HWND widget, const wchar_t* name, bool quiet, bool eligible) {
     GdiFlush();
     COLORREF center{};
     // Sample across the antialiased line rather than assuming a pixel-center phase.
-    for (int y = r.bottom * 45 / 65; y <= r.bottom * 48 / 65; ++y) {
+    for (int y = r.bottom * 43 / 63; y <= r.bottom * 46 / 63; ++y) {
         const auto pixel = GetPixel(dc, r.right * 128 / 270, y);
         if (eligible ? GetGValue(pixel) > GetGValue(center) : GetRValue(pixel) > GetRValue(center)) center = pixel;
     }
-    const auto above = GetPixel(dc, r.right * 128 / 270, r.bottom * 37 / 65);
+    const auto above = GetPixel(dc, r.right * 128 / 270, r.bottom * 35 / 63);
     bool ok = !quiet || (eligible ? GetGValue(center) > 110 && GetBValue(center) > 160 :
         GetRValue(center) > 150 && GetGValue(center) < 120);
     // A quiet waveform must remain a single horizontal line, with no vertical bars.
@@ -139,7 +139,7 @@ int text_ink(HWND widget, bool blue) {
     const auto old = SelectObject(dc, bitmap);
     SendMessageW(widget, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(dc), PRF_CLIENT); GdiFlush();
     int count{};
-    for (int y = r.bottom * 6 / 65; y < r.bottom * 19 / 65; ++y)
+    for (int y = r.bottom * 6 / 63; y < r.bottom * 19 / 63; ++y)
         for (int x = r.right * 20 / 270; x < r.right * 250 / 270; ++x) {
             const auto color = GetPixel(dc, x, y);
             if (blue ? GetRValue(color) < 130 && GetGValue(color) > 100 && GetBValue(color) > 160 :
@@ -309,11 +309,11 @@ int wmain(int argc, wchar_t** argv) {
     RECT client{}; GetClientRect(widget, &client);
     const auto shape = CreateRectRgn(0, 0, 0, 0);
     CHECK(GetWindowRgn(widget, shape) != ERROR);
-    CHECK(PtInRegion(shape, client.right / 2, client.bottom * 12 / 65));
-    CHECK(PtInRegion(shape, client.right / 2, client.bottom * 47 / 65));
-    CHECK(!PtInRegion(shape, client.right / 2, client.bottom * 26 / 65));
+    CHECK(PtInRegion(shape, client.right / 2, client.bottom * 12 / 63));
+    CHECK(PtInRegion(shape, client.right / 2, client.bottom * 45 / 63));
+    CHECK(!PtInRegion(shape, client.right / 2, client.bottom * 25 / 63));
     DeleteObject(shape);
-    const POINT gap{reopened.left + client.right / 2, reopened.top + client.bottom * 26 / 65};
+    const POINT gap{reopened.left + client.right / 2, reopened.top + client.bottom * 25 / 63};
     CHECK(WindowFromPoint(gap) != widget);
     CHECK(!FindWindowW(L"Dictator.Tooltip.2", nullptr)); // Hover hints live in the top capsule.
     // One-second delay, blue fade-in, contextual copy and live eligibility updates.
@@ -340,7 +340,7 @@ int wmain(int argc, wchar_t** argv) {
     SendMessageW(target, WM_APP + 1, 0, 0);
     CHECK(until([&] { return snapshot().eligible != 0; }));
     // Microphone edges remain source-specific and never activate the Widget.
-    const auto point = MAKELPARAM(client.right * 20 / 270, client.bottom * 47 / 65);
+    const auto point = MAKELPARAM(client.right * 20 / 270, client.bottom * 45 / 63);
     SetCursorPos(reopened.left + GET_X_LPARAM(point), reopened.top + GET_Y_LPARAM(point));
     SendMessageW(widget, WM_MOUSEMOVE, 0, point);
     GetWindowTextW(widget, copy, 768); CHECK(wcscmp(copy, L"Dictator Widget") == 0);
@@ -382,12 +382,12 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(ReleaseCapture());
     CHECK(until([&] { return dictator_host_input(host, &released) != 0; }));
     CHECK(released.source == 2 && released.down == 2);
-    const auto tools_point = MAKELPARAM(client.right * 229 / 270, client.bottom * 47 / 65);
+    const auto tools_point = MAKELPARAM(client.right * 229 / 270, client.bottom * 45 / 63);
     dictator_host_poll_events(host);
     SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, tools_point);
     SendMessageW(widget, WM_LBUTTONUP, 0, tools_point);
     CHECK(dictator_host_poll_events(host) == 2);
-    const auto close_point = MAKELPARAM(client.right * 253 / 270, client.bottom * 47 / 65);
+    const auto close_point = MAKELPARAM(client.right * 253 / 270, client.bottom * 45 / 63);
     SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, close_point);
     SendMessageW(widget, WM_LBUTTONUP, 0, close_point);
     CHECK(!IsWindowVisible(widget) && dictator_host_poll_events(host) == 32);
