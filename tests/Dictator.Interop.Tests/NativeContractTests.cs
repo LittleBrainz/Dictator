@@ -46,6 +46,21 @@ public sealed class NativeContractTests
     }
 
     [Fact]
+    public void CredentialManagerRoundTripUsesAnIsolatedTarget()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var store = new CredentialStore("Dictator/Test/" + Guid.NewGuid());
+        try {
+            Assert.False(store.Exists); Assert.Null(store.Read());
+            store.Save("fixture-key-never-a-real-secret");
+            Assert.True(store.Exists); Assert.Equal("fixture-key-never-a-real-secret", store.Read());
+            Assert.Throws<InvalidOperationException>(() => store.Save("bad key with whitespace"));
+            Assert.Equal("fixture-key-never-a-real-secret", store.Read());
+            store.Remove(); Assert.False(store.Exists); Assert.Null(store.Read());
+        } finally { store.Remove(); }
+    }
+
+    [Fact]
     public void VersionAndStructLayoutAreExact()
     {
         Assert.Equal(1u, NativeMethods.GetAbiVersion());

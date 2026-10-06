@@ -35,6 +35,24 @@ internal sealed class AudioBridge : IDisposable
     private readonly CancellationTokenSource cancellation = new();
     private readonly Task consumer;
     private Task<IReadOnlyList<MicrophoneChoice>>? catalog;
+    private readonly object transfer = new();
+    private readonly float[] samples = new float[4096];
+    private Dictator.Core.Transcription.TranscriptionRun? sink;
+    private ulong? captureSession;
+    private bool transferFailed;
+    internal bool TransferFailed { get { lock (transfer) return transferFailed; } }
+    internal void BeginTransfer(Dictator.Core.Transcription.TranscriptionRun run)
+    {
+        lock (transfer) { sink = run; captureSession = null; transferFailed = false; }
+    }
+    internal void FinishTransfer()
+    {
+        lock (transfer) sink?.RequestFinish();
+    }
+    internal void EndTransfer()
+    {
+        lock (transfer) { sink = null; captureSession = null; }
+    }
     internal AudioBridge(nint handle)
     {
         if (handle == 0) throw new InvalidOperationException("Microphone service is unavailable.");
@@ -59,25 +77,34 @@ internal sealed class AudioBridge : IDisposable
     }
     private async Task ConsumeAsync()
     {
-        var samples = new float[4096];
         try
         {
             while (!cancellation.IsCancellationRequested)
             {
-                ReadAndDiscard(samples);
+                lock (transfer) ReadAndTransfer();
                 await Task.Delay(20, cancellation.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         finally { Array.Clear(samples); }
     }
-    private unsafe void ReadAndDiscard(float[] samples)
+    private unsafe bool ReadAndTransfer()
     {
+        uint count; ulong epoch;
+        var snapshot = Snapshot;
         fixed (float* pointer = samples)
-            NativeMethods.EnsureSuccess(NativeMethods.AudioRead(handle, pointer, (uint)samples.Length, out _, out _));
-        // Phase 3 has no provider or recorder. Future STT can consume these bounded
-        // chunks with their session/rate metadata before clearing this same array.
-        Array.Clear(samples);
+            NativeMethods.EnsureSuccess(NativeMethods.AudioRead(handle, pointer, (uint)samples.Length, out count, out epoch));
+        try {
+            if (sink is not null && count != 0 && snapshot.State is 2 or 4) {
+                captureSession ??= epoch;
+                if (captureSession != epoch || snapshot.Session != epoch || snapshot.DroppedFrames != 0 ||
+                    !sink.Append(samples.AsSpan(0, checked((int)count)), checked((int)snapshot.SampleRate))) transferFailed = true;
+            }
+            if (sink is { EndRequested: true } && Snapshot.State == 0) {
+                sink.Finish(); sink = null; captureSession = null;
+            }
+            return count != 0;
+        } finally { Array.Clear(samples); }
     }
     public void Dispose()
     {

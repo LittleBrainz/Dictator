@@ -1,4 +1,4 @@
-# Verification through Phase 3
+# Verification through Phase 4
 
 Phase 0 passed Windows CI and the user accepted the revised app-local artifact.
 Phase 1 adds the following automated and manual lifecycle checks.
@@ -41,13 +41,13 @@ Core tests also check malformed/unsupported settings, reserved Hotkeys, defaults
 atomic replacement and no temporary-file residue. ABI tests cover error codes,
 10,000 ownership cycles, Unicode/embedded NUL, and cross-thread consumer polling.
 
-The `Phase3-test-results` artifact contains TRX and JSON evidence. The `Dictator v<version>`
+The `Phase4-test-results` artifact contains TRX and JSON evidence. The `Dictator v<version>`
 artifact contains the application tree only, without a nested ZIP. CI checks do
 not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.3.0** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.4.0** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -122,7 +122,7 @@ and actual per-pixel desktop compositing. A window-procedure observer records ev
 position against all four screen edges at every zoom stop, requiring one bounded
 move per update instead of an out-of-bounds move followed by correction. The user's Windows desktop acceptance confirmed Phase 2
 before this visual refinement; repeat appearance and taskbar placement below for
-v0.3.0, including an auto-hidden taskbar and secondary monitors.
+v0.4.0, including an auto-hidden taskbar and secondary monitors.
 
 ## Phase 2 manual Windows 11 acceptance
 
@@ -216,3 +216,54 @@ On the user's Windows 11 desktop, additionally:
 6. Drag/change zoom/hover controls throughout capture. Check responsiveness,
    taskbar/work-area bounds and no activation except explicitly opening Settings.
    Record the hardware, Windows build, run/commit and results without audio content.
+
+
+## Phase 4 automated and manual transcription checks
+
+Core tests use a loopback WebSocket protocol fixture with the production
+ClientWebSocket client. They verify effective session configuration before audio,
+raw Unicode deltas before commit, fragmented responses, authoritative final text,
+short-turn padding, streamed resampling and tail flush, cancellation, queue bounds
+and wiping, unsupported/missing acknowledgment, interrupted connections, HTTP
+401/403/429 and server authentication/quota/rate/model errors. Error responses
+containing fake secret/transcript text must never echo those fields. DSP checks
+cover 8/16/24/44.1/48/192 kHz chunk continuity, tail counts, NaN handling and
+anti-alias filtering. Native interaction checks enforce presentation epoch guards,
+ticker backpressure clear and graceful stop without focus theft. Interop tests
+write/read/delete a uniquely named test credential through production WinCred calls.
+
+The extracted package uses an isolated empty credential target. An eligible Talk
+gesture must show an actionable missing-key error before opening the microphone,
+preserve focus and leave target text/selection unchanged. It also checks microphone
+preference persistence, no-cursor recovery and Quit. This replaces Phase 3's
+no-key capture attempt because a provider credential is now required. Native audio
+contracts remain covered independently. No CI test reads a personal key, contacts
+OpenAI, sends real microphone audio or saves recordings. Loopback fixture success
+cannot establish real OpenAI account/model access or physical microphone quality.
+
+On Windows 11:
+
+1. Enter a valid OpenAI API key under Speech and Save. The password field must clear,
+   credential status must show stored, and restart must preserve that status without
+   putting a key in `~/.dictator/settings.json` or Diagnostics. OpenAI API billing
+   is separate from ChatGPT. Remove must erase the credential; Talking with no key
+   must fail before capture and preserve target focus. Re-enter to continue.
+2. Focus a writable field, Talk and speak English, French and Chinese as appropriate.
+   Check real waveform levels and smoothly scrolling white raw text in the spoken
+   language. Stop normally; wait for Completed before opening Speech. Inspect/copy
+   the authoritative final transcript. No text is inserted into the target yet.
+3. Test tap/hold with Hotkey and mic, silence, a very short phrase, rapid stop/start,
+   and long speech. Last audio must finalize cleanly, storage stays bounded, and old
+   deltas/finals must never appear in the newly started session, even in the same
+   field. Full final text is separate from ticker content that has scrolled away.
+4. Lose/change cursor eligibility, close the Widget, change mic/Hotkey, Restart and
+   Quit while connecting, talking and finalizing. Check immediate capture stop,
+   cancelled late events, responsive Widget, preserved focus and no lingering host.
+5. Test an invalid key, an account without credits/access, network loss and restoration.
+   Check safe inactive state and useful errors; no partial result is inserted or
+   promoted to a final transcript. Another Talk gesture must create a fresh working
+   connection after the problem is fixed. Check no credential, transcript content
+   or audio appears in diagnostics, IPC evidence, settings or files.
+6. Repeat microphone default-switch/disconnection and desktop privacy-denial checks
+   from Phase 3 with transcription active. Record account/model access, run/commit,
+   Windows build and results without sharing the key, audio or private transcript.

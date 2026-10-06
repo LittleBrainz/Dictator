@@ -55,14 +55,15 @@ public sealed partial class MainWindow : Window
             AppTheme.Light => ElementTheme.Light, AppTheme.Dark => ElementTheme.Dark, _ => ElementTheme.Default
         };
         Navigation.RequestedTheme = DiagnosticsRoot.RequestedTheme;
-        SettingsError.IsOpen = owner.SettingsError is not null || owner.HotkeyError is not null || owner.AudioError is not null;
-        SettingsError.Message = owner.SettingsError ?? owner.HotkeyError ?? owner.AudioError ?? "";
+        SettingsError.IsOpen = owner.SettingsError is not null || owner.HotkeyError is not null || owner.AudioError is not null || owner.SpeechError is not null;
+        SettingsError.Message = owner.SettingsError ?? owner.HotkeyError ?? owner.AudioError ?? owner.SpeechError ?? "";
         SettingsError.Title = owner.SettingsError is null && owner.HotkeyError is null && owner.AudioError is not null ? "Microphone needs attention" : "Settings need attention";
         StartupSwitch.IsEnabled = owner.Store.Error is null;
         ThemeChoice.IsEnabled = owner.Store.Error is null;
         HotkeyBox.IsEnabled = owner.Store.Error is null;
         ResetHotkeyButton.IsEnabled = owner.Store.Error is null;
         ZoomChoice.IsEnabled = owner.Store.Error is null;
+        RefreshSpeechStatus();
         updating = false;
     }
     private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -111,6 +112,25 @@ public sealed partial class MainWindow : Window
             owner.Save(owner.Preferences with { MicrophoneId = choice.Id });
     }
     private async void OnRefreshMicrophones(object sender, RoutedEventArgs args) => await owner.RefreshMicrophonesAsync();
+    internal void RefreshSpeechStatus()
+    {
+        SpeechProviderText.Text = $"Provider: OpenAI · Model: {owner.SpeechModel}";
+        CredentialStatus.Text = owner.ApiKeyConfigured ? "API key stored in Windows Credential Manager." : "Add an OpenAI API key to enable transcription.";
+        RemoveKeyButton.IsEnabled = owner.ApiKeyConfigured;
+        SpeechStatusText.Text = $"Transcription: {owner.SpeechStatus}";
+        RawTranscript.Text = owner.LastTranscript;
+        CopyTranscriptButton.IsEnabled = owner.LastTranscript.Length != 0;
+    }
+    private void OnSaveApiKey(object sender, RoutedEventArgs args)
+    {
+        try { owner.SaveApiKey(ApiKeyBox.Password); }
+        finally { ApiKeyBox.Password = ""; }
+    }
+    private void OnRemoveApiKey(object sender, RoutedEventArgs args) => owner.RemoveApiKey();
+    private void OnCopyTranscript(object sender, RoutedEventArgs args)
+    {
+        var content = new DataPackage(); content.SetText(owner.LastTranscript); Clipboard.SetContent(content);
+    }
     private void OnCopyDiagnostics(object sender, RoutedEventArgs args)
     {
         var content = new DataPackage();

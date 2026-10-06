@@ -30,6 +30,9 @@ internal sealed class ResidentHost : IDisposable
     internal ulong LiveTextSession => NativeMethods.HostLiveTextSession(handle);
     internal NativeResult AppendLiveText(ulong target, ulong session, string text) =>
         NativeMethods.HostAppendLiveText(handle, target, session, text, checked((uint)text.Length));
+    internal void FinishPreview() => NativeMethods.EnsureSuccess(NativeMethods.HostFinishPreview(handle));
+    internal void NotifyError(string message) => NativeMethods.EnsureSuccess(NativeMethods.HostNotifyError(handle, message));
+    internal NativeResult ClearLiveText(ulong target, ulong session) => NativeMethods.HostClearLiveText(handle, target, session);
     internal void SetWidget(bool visible, Preferences preferences) => NativeMethods.EnsureSuccess(
         NativeMethods.HostSetWidget(handle, visible ? 1u : 0u, preferences.WidgetZoom, (uint)preferences.Theme));
     public void Dispose()
@@ -76,6 +79,15 @@ internal static partial class NativeMethods
     [LibraryImport(Library, EntryPoint = "dictator_host_append_live_text", StringMarshalling = StringMarshalling.Utf16)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeResult HostAppendLiveText(nint handle, ulong target, ulong session, string text, uint count);
+    [LibraryImport(Library, EntryPoint = "dictator_host_finish_preview")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial NativeResult HostFinishPreview(nint handle);
+    [LibraryImport(Library, EntryPoint = "dictator_host_clear_live_text")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial NativeResult HostClearLiveText(nint handle, ulong target, ulong session);
+    [LibraryImport(Library, EntryPoint = "dictator_host_notify_error", StringMarshalling = StringMarshalling.Utf16)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial NativeResult HostNotifyError(nint handle, string message);
     [LibraryImport(Library, EntryPoint = "dictator_host_live_text_session")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial ulong HostLiveTextSession(nint handle);

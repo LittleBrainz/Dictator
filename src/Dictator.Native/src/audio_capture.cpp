@@ -90,15 +90,15 @@ dictator_audio::~dictator_audio() {
 void dictator_audio::start(const wchar_t* selected, uint64_t target, uintptr_t foreground, uintptr_t focus,
     const std::atomic<uint64_t>* eligibility, const std::atomic<uint64_t>* checked_at) noexcept {
     if (fatal_.load(std::memory_order_acquire)) return;
-    { std::lock_guard lock(commands_); wcscpy_s(requested_, selected); requested_on_ = true; ++request_number_;
+    { std::lock_guard lock(commands_); wcscpy_s(requested_, selected); requested_on_ = true; requested_preserve_ = false; ++request_number_;
       requested_target_ = target; requested_foreground_ = foreground; requested_focus_ = focus; eligibility_ = eligibility; checked_at_ = checked_at; }
     state_.store(1, std::memory_order_release);
     // Initialization failure can race a first gesture; never overwrite its error.
     if (fatal_.load(std::memory_order_acquire)) state_.store(3, std::memory_order_release);
     SetEvent(control_);
 }
-void dictator_audio::stop() noexcept {
-    { std::lock_guard lock(commands_); requested_on_ = false; ++request_number_; }
+void dictator_audio::stop(bool preserve) noexcept {
+    { std::lock_guard lock(commands_); requested_on_ = false; requested_preserve_ = preserve; ++request_number_; }
     SetEvent(control_);
 }
 void dictator_audio::changed(const wchar_t* id, bool unavailable, bool default_changed) noexcept {
@@ -118,8 +118,13 @@ uint32_t dictator_audio::read(float* output, uint32_t capacity_count, uint64_t& 
     std::lock_guard lock(consumer_); // Only non-real-time consumers ever acquire this mutex.
     session = session_.load(std::memory_order_acquire);
     auto count = static_cast<uint32_t>(buffer_.read(output, capacity_count, valid_from_.load(std::memory_order_acquire)));
-    if (state_.load(std::memory_order_acquire) != 2 || session != session_.load(std::memory_order_acquire)) {
+    const auto state = state_.load(std::memory_order_acquire);
+    if ((state != 2 && state != 4) || session != session_.load(std::memory_order_acquire)) {
         SecureZeroMemory(output, count * sizeof(float)); count = 0;
+    }
+    if (state == 4 && buffer_.buffered() == 0) {
+        uint32_t draining = 4;
+        state_.compare_exchange_strong(draining, 0, std::memory_order_acq_rel);
     }
     return count;
 }
@@ -148,13 +153,16 @@ void dictator_audio::run() noexcept {
                     reinterpret_cast<uintptr_t>(foreground) == bound_foreground && GetGUIThreadInfo(thread, &gui) &&
                     reinterpret_cast<uintptr_t>(gui.hwndFocus) == bound_focus;
             };
-            auto release = [&] {
+            auto release = [&](bool preserve = false) {
                 if (client) client->Stop();
                 if (priority) { AvRevertMmThreadCharacteristics(priority); priority = nullptr; }
                 capture.Reset(); client.Reset(); device.Reset();
                 if (format) { CoTaskMemFree(format); format = nullptr; }
-                peak_.store(0); rms_.store(0); valid_from_.store(buffer_.head(), std::memory_order_release);
-                session_.fetch_add(1, std::memory_order_release);
+                peak_.store(0); rms_.store(0);
+                if (!preserve) {
+                    valid_from_.store(buffer_.head(), std::memory_order_release);
+                    session_.fetch_add(1, std::memory_order_release);
+                }
                 { std::lock_guard lock(selection_); active_[0] = 0; }
             };
             auto fail = [&](HRESULT failure, uint32_t reason = 0) {
@@ -172,12 +180,12 @@ void dictator_audio::run() noexcept {
                     SetEvent(control_); continue;
                 }
                 if (signaled == WAIT_OBJECT_0 + 1) {
-                    wchar_t selected[512]{}; bool enabled{}; uint64_t number{};
-                    { std::lock_guard lock(commands_); enabled = requested_on_; number = request_number_; wcscpy_s(selected, requested_);
+                    wchar_t selected[512]{}; bool enabled{}, preserve{}; uint64_t number{};
+                    { std::lock_guard lock(commands_); enabled = requested_on_; preserve = requested_preserve_; number = request_number_; wcscpy_s(selected, requested_);
                       bound_target = requested_target_; bound_foreground = requested_foreground_; bound_focus = requested_focus_; eligibility = eligibility_; checked_at = checked_at_; }
                     if (number != applied) {
-                        applied = number; release(); removed_.store(false);
-                        if (!enabled) { state_.store(0, std::memory_order_release); continue; }
+                        applied = number; release(preserve && !enabled); removed_.store(false);
+                        if (!enabled) { state_.store(preserve ? 4u : 0u, std::memory_order_release); continue; }
                         state_.store(1, std::memory_order_release); error_.store(0); status_.store(0);
                         dropped_.store(0); frames_.store(0); sample_rate_.store(0); channels_.store(0);
                         hr = selected[0] ? enumerator->GetDevice(selected, &device) : enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &device);

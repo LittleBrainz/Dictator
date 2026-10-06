@@ -551,3 +551,31 @@ dictator_result DICTATOR_CALL dictator_host_configure_audio(dictator_host* h, co
 dictator_audio* DICTATOR_CALL dictator_host_audio_handle(dictator_host* h) noexcept {
     return correct_thread(h) ? h->audio.get() : nullptr;
 }
+
+
+dictator_result DICTATOR_CALL dictator_host_clear_live_text(dictator_host* h, uint64_t target, uint64_t session) noexcept {
+    if (!correct_thread(h)) return h ? DICTATOR_WRONG_THREAD : DICTATOR_INVALID_ARGUMENT;
+    refresh_target(h);
+    if (!h->talking || !target || h->target != target || !session || h->text_epoch != session) return DICTATOR_INVALID_ARGUMENT;
+    h->ticker.clear(GetTickCount64()); InvalidateRect(h->widget, nullptr, FALSE); return DICTATOR_OK;
+}
+dictator_result DICTATOR_CALL dictator_host_notify_error(dictator_host* h, const uint16_t* message) noexcept {
+    if (!correct_thread(h)) return h ? DICTATOR_WRONG_THREAD : DICTATOR_INVALID_ARGUMENT;
+    if (!message) return DICTATOR_INVALID_ARGUMENT;
+    NOTIFYICONDATAW notice{}; notice.cbSize = sizeof(notice); notice.hWnd = h->owner; notice.uID = 1;
+    notice.uFlags = NIF_INFO; notice.dwInfoFlags = NIIF_ERROR;
+    wcscpy_s(notice.szInfoTitle, L"Dictator speech");
+    wcsncpy_s(notice.szInfo, reinterpret_cast<const wchar_t*>(message), _TRUNCATE);
+    Shell_NotifyIconW(NIM_MODIFY, &notice); return DICTATOR_OK;
+}
+dictator_result DICTATOR_CALL dictator_host_finish_preview(dictator_host* h) noexcept {
+    if (!correct_thread(h)) return h ? DICTATOR_WRONG_THREAD : DICTATOR_INVALID_ARGUMENT;
+    refresh_target(h);
+    if (h->talking) {
+        if (h->audio) h->audio->stop(true);
+        h->talking = false; h->target = 0; h->levels.fill(0); ++h->text_epoch;
+        h->ticker.clear(GetTickCount64()); hide_tooltip(h); h->hover_at = GetTickCount64();
+        InvalidateRect(h->widget, nullptr, FALSE);
+    }
+    return DICTATOR_OK;
+}
