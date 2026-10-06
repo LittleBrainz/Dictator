@@ -38,7 +38,12 @@ Write-Host "Building with $generator ($vsVersion), Windows SDK $sdkVersion"
 New-Item artifacts -ItemType Directory -Force | Out-Null
 Invoke-Checked { cmake -S . -B artifacts/native -G $generator -A x64 "-DCMAKE_SYSTEM_VERSION=$sdkVersion" "-DCMAKE_GENERATOR_INSTANCE=$visualStudio" }
 Invoke-Checked { cmake --build artifacts/native --config Release --parallel 2 }
-Invoke-Checked { ctest --test-dir artifacts/native -C Release --output-on-failure }
+$env:DICTATOR_WIDGET_EVIDENCE = Join-Path $PWD 'artifacts/test-results/widget'
+try {
+    Invoke-Checked { ctest --test-dir artifacts/native -C Release --output-on-failure }
+} finally {
+    Remove-Item Env:DICTATOR_WIDGET_EVIDENCE -ErrorAction SilentlyContinue
+}
 Invoke-Checked { dotnet restore Dictator.sln --locked-mode }
 Invoke-Checked { dotnet test tests/Dictator.Core.Tests -c Release --no-restore --logger 'trx;LogFileName=core.trx' --results-directory artifacts/test-results }
 Invoke-Checked { dotnet publish src/Dictator.App -c Release --no-restore --self-contained true -o artifacts/publish "-p:BundledVCRuntimeDir=$crt" }

@@ -655,6 +655,12 @@ The Widget:
 
 ### 14.2 Controls and hit regions
 
+Use the user-supplied blue glass mock-up: rounded cyan/chrome frame, dark navy
+interior, a dark transcript strip above the control row, left circular microphone,
+cyan waveform in the middle, and circular Settings/Close controls on the right.
+Keep the Widget itself compact; the mock-up desktop background is not part of it.
+The Widget uses this blue palette in all Settings themes.
+
 Required regions:
 
 - waveform/transcript body;
@@ -674,14 +680,15 @@ Behavior:
 
 When there is **no valid text insertion cursor**:
 
-- quiet/waveform area indicates not-ready in red;
+- waveform is a single red straight line;
 - microphone is off/red/slashed;
 - no waveform animation runs;
 - a Talking session cannot start.
 
 When there is a valid cursor but Dictator is inactive:
 
-- show quiet ready state;
+- microphone is red and diagonally slashed whenever inactive;
+- waveform is a single cyan straight line;
 - no animated waveform.
 
 When active:
@@ -695,6 +702,8 @@ Remove the old Preview → Finish → Complete cycle. Do not add “Listening pr
 
 ### 14.4 Streaming transcript area
 
+The top strip is reserved for real streaming text and stays empty in Phase 2.
+Do not render the mock-up example sentence as a live transcript.
 From Phase 4 onward the Widget dynamically presents raw streaming text while Talking.
 
 Desired behavior:
@@ -710,7 +719,7 @@ Desired behavior:
 
 Use a compact design informed by the accepted prototype:
 
-- base width approximately **270 DIP** at 1.000 zoom;
+- base size **270 by 56 DIP** at 1.000 zoom;
 - waveform/body width is compact, roughly 60% of the earlier prototype direction;
 - final dimensions may be tuned during Phase 2 acceptance, but do not drift back to a broad status panel.
 
@@ -740,7 +749,10 @@ Default placement:
 
 - bottom-center of the relevant monitor's work area;
 - clear of taskbar/work-area exclusions;
-- raised by approximately **half the current zoomed Widget height** beyond a normal bottom margin.
+- raised by approximately **half the current zoomed Widget height** beyond a normal bottom margin;
+- add approximately **half the taskbar height** of clearance, using the relevant
+  monitor taskbar dimensions independently of Widget Zoom;
+- reserve the full bottom taskbar area even when it is auto-hidden.
 
 Position rules:
 

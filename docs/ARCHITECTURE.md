@@ -216,11 +216,24 @@ No microphone, network request, insertion API or audio buffer is introduced.
 
 The native Widget/tooltip use WS_EX_NOACTIVATE and MA_NOACTIVATE, SWP_NOACTIVATE
 placement, and do not call SetForegroundWindow during ordinary interaction. Tools
-is the explicit exception that asks C# to activate Settings. A 270 by 48 DIP
+is the explicit exception that asks C# to activate Settings. A 270 by 56 DIP
 Widget scales with DPI and the five persisted zoom stops. Body dragging is kept
 only in native host memory, clamped to monitor work areas and retained through
 close/reopen. Default placement is bottom-center, raised by half the scaled height
-plus the normal margin. Display/setting/DPI changes re-clamp placement.
+plus the normal margin and half the relevant bottom taskbar height. Primary and
+secondary taskbar bounds are queried; auto-hidden bottom taskbars are reserved
+before positioning. A DPI-scaled 24 DIP clearance is the fallback. Dragged
+positions are preserved, subject to work-area/taskbar clamping.
+Display/setting/DPI changes re-clamp placement.
+
+The blue glass frame is painted with double-buffered, anti-aliased GDI+ on the
+existing non-activating HWND. GDI+ startup/shutdown follows native host ownership.
+Drawing and hit regions share the 270 by 56 coordinate layout: microphone left,
+waveform middle, Settings/Close right. The top transcript strip is an empty drag
+surface until real transcription arrives in Phase 4. Inactive microphones are
+always red and slashed; eligible quiet state has a cyan straight line, ineligible
+state a red straight line. Active preview has a green microphone and cyan bars.
+The Widget retains its blue palette in every theme; tooltips follow the theme.
 
 A separate non-activating tooltip computes its work-area-clamped position before
 showing, starts after 1000 ms in a hit region, and repaints contextual copy when

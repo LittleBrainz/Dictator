@@ -2,7 +2,10 @@
 #define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
+#include <objidl.h>
+#include <gdiplus.h>
 #include <chrono>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -72,6 +75,35 @@ void key(WORD code, bool up = false) {
     if (SendInput(1, &input, sizeof(input)) != 1) throw std::runtime_error("SendInput failed");
     pump();
 }
+bool capture(HWND widget, const wchar_t* name, bool quiet, bool eligible) {
+    RECT r{}; GetClientRect(widget, &r);
+    const auto screen = GetDC(widget), dc = CreateCompatibleDC(screen);
+    const auto bitmap = CreateCompatibleBitmap(screen, r.right, r.bottom);
+    const auto old = SelectObject(dc, bitmap);
+    SendMessageW(widget, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(dc), PRF_CLIENT);
+    GdiFlush();
+    COLORREF center{};
+    // Sample across the antialiased line rather than assuming a pixel-center phase.
+    for (int y = r.bottom * 35 / 56; y <= r.bottom * 38 / 56; ++y) {
+        const auto pixel = GetPixel(dc, r.right * 128 / 270, y);
+        if (eligible ? GetGValue(pixel) > GetGValue(center) : GetRValue(pixel) > GetRValue(center)) center = pixel;
+    }
+    const auto above = GetPixel(dc, r.right * 128 / 270, r.bottom * 28 / 56);
+    bool ok = !quiet || (eligible ? GetGValue(center) > 110 && GetBValue(center) > 160 :
+        GetRValue(center) > 150 && GetGValue(center) < 120);
+    // A quiet waveform must remain a single horizontal line, with no vertical bars.
+    if (quiet) ok = ok && GetGValue(above) < 100 && GetRValue(above) < 100;
+    wchar_t folder[32768]{};
+    if (GetEnvironmentVariableW(L"DICTATOR_WIDGET_EVIDENCE", folder, 32768)) {
+        std::filesystem::create_directories(folder);
+        const auto path = std::filesystem::path(folder) / (std::wstring(name) + L".png");
+        Gdiplus::Bitmap image(bitmap, nullptr);
+        const CLSID png{0x557cf406, 0x1a04, 0x11d3, {0x9a, 0x73, 0, 0, 0xf8, 0x1e, 0xf3, 0x2e}};
+        ok = image.Save(path.c_str(), &png, nullptr) == Gdiplus::Ok && ok;
+    }
+    SelectObject(dc, old); DeleteObject(bitmap); DeleteDC(dc); ReleaseDC(widget, screen);
+    return ok;
+}
 struct session {
     PROCESS_INFORMATION child{};
     dictator_host* host{};
@@ -103,6 +135,13 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(until([&] { return snapshot().eligible != 0; }));
     const auto initial_identity = snapshot();
     CHECK(initial_identity.process_id == test.child.dwProcessId && initial_identity.token != 0);
+    CHECK(capture(widget, L"ready", true, true));
+    RECT default_position{}; GetWindowRect(widget, &default_position);
+    MONITORINFO monitor{sizeof(monitor)};
+    CHECK(GetMonitorInfoW(MonitorFromWindow(widget, MONITOR_DEFAULTTONEAREST), &monitor));
+    const int default_height = default_position.bottom - default_position.top;
+    const int extra_clearance = static_cast<int>(24 * GetDpiForWindow(widget) / 96);
+    CHECK(default_position.bottom <= monitor.rcWork.bottom - default_height / 2 - extra_clearance);
     const uint16_t binding[] = {'C','t','r','l','-','A','l','t','-','F','8',0};
     CHECK(dictator_host_bind_hotkey(host, 3, VK_F8, 0, binding) == DICTATOR_OK);
     dictator_host_poll_events(host);
@@ -119,6 +158,7 @@ int wmain(int argc, wchar_t** argv) {
     dictator_input unexpected{};
     CHECK(dictator_host_input(host, &unexpected) == 0);
     CHECK(dictator_host_preview(host, identity.token) == DICTATOR_OK);
+    CHECK(capture(widget, L"talking", false, true));
     const auto held_until = GetTickCount64() + 550;
     CHECK(until([&] { return GetTickCount64() >= held_until; }, 1000));
     key(VK_MENU, true); key(VK_CONTROL, true); key(VK_F8, true);
@@ -130,6 +170,7 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(until([&] { return SendMessageW(target, WM_APP + 11, 0, 0) == 1 && SendMessageW(target, WM_APP + 12, 0, 0) == 1; }));
     SendMessageW(target, WM_APP + 2, 0, 0);
     CHECK(until([&] { return snapshot().eligible == 0; }));
+    CHECK(capture(widget, L"no-cursor", true, false));
     key(VK_CONTROL); key(VK_MENU); key(VK_F8); key(VK_F8, true); key(VK_MENU, true); key(VK_CONTROL, true);
     CHECK(until([&] { return dictator_host_input(host, &pressed) != 0; }));
     CHECK(pressed.target == 0);
@@ -207,7 +248,7 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(until([&] { return snapshot().eligible != 0; }));
     // Microphone edges remain source-specific and never activate the Widget.
     RECT client{}; GetClientRect(widget, &client);
-    const auto point = MAKELPARAM(client.right - 5 * client.bottom / 2, client.bottom / 2);
+    const auto point = MAKELPARAM(client.right * 25 / 270, client.bottom * 37 / 56);
     SetCursorPos(reopened.left + GET_X_LPARAM(point), reopened.top + GET_Y_LPARAM(point));
     SendMessageW(widget, WM_MOUSEMOVE, 0, point);
     CHECK(!IsWindowVisible(tooltip));
@@ -232,6 +273,15 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(ReleaseCapture());
     CHECK(until([&] { return dictator_host_input(host, &released) != 0; }));
     CHECK(released.source == 2 && released.down == 2);
+    const auto tools_point = MAKELPARAM(client.right * 229 / 270, client.bottom * 37 / 56);
+    dictator_host_poll_events(host);
+    SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, tools_point);
+    SendMessageW(widget, WM_LBUTTONUP, 0, tools_point);
+    CHECK(dictator_host_poll_events(host) == 2);
+    const auto close_point = MAKELPARAM(client.right * 253 / 270, client.bottom * 37 / 56);
+    SendMessageW(widget, WM_LBUTTONDOWN, MK_LBUTTON, close_point);
+    SendMessageW(widget, WM_LBUTTONUP, 0, close_point);
+    CHECK(!IsWindowVisible(widget) && dictator_host_poll_events(host) == 32);
     CHECK(GetForegroundWindow() == target);
     CHECK(SendMessageW(widget, WM_MOUSEACTIVATE, 0, 0) == MA_NOACTIVATE);
     SetCursorPos(cursor.x, cursor.y);

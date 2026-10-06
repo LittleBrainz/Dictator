@@ -3,7 +3,10 @@
 This is a fresh implementation of Dictator, not a reconstruction of the deleted
 C++ prototype. Read `docs/SPECIFICATION.md` and the requested phase. Later explicit
 requirements override generic framework conventions. Phase 0 passed Windows CI and
-the user accepted the staged artifact. The user accepted Phase 1. Phase 2 is the current scope.
+the user accepted the staged artifact. The user accepted Phases 1 and 2. The current scope is the user-requested Widget
+design refinement before Phase 3. Keep the blue glass design, left microphone,
+right Settings/Close controls, red/slashed inactive microphone, cyan quiet line
+with an eligible cursor, and red quiet line without one.
 
 ## Platform and architecture
 
