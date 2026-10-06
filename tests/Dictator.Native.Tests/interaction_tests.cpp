@@ -180,6 +180,7 @@ int wmain(int argc, wchar_t** argv) {
     // One-second region delay, exact contextual copy and live eligibility updates.
     const auto tooltip = FindWindowW(L"Dictator.Tooltip.2", nullptr);
     CHECK(tooltip && (GetWindowLongPtrW(tooltip, GWL_EXSTYLE) & WS_EX_NOACTIVATE));
+    SetCursorPos(reopened.left + 10, reopened.top + 10);
     SendMessageW(widget, WM_MOUSEMOVE, 0, MAKELPARAM(10, 10));
     const auto early = GetTickCount64() + 900;
     CHECK(until([&] { return GetTickCount64() >= early; }, 1500));
@@ -198,6 +199,7 @@ int wmain(int argc, wchar_t** argv) {
     // Microphone edges remain source-specific and never activate the Widget.
     RECT client{}; GetClientRect(widget, &client);
     const auto point = MAKELPARAM(client.right - 5 * client.bottom / 2, client.bottom / 2);
+    SetCursorPos(reopened.left + GET_X_LPARAM(point), reopened.top + GET_Y_LPARAM(point));
     SendMessageW(widget, WM_MOUSEMOVE, 0, point);
     CHECK(!IsWindowVisible(tooltip));
     CHECK(until([&] { return IsWindowVisible(tooltip) != FALSE; }));
@@ -217,5 +219,6 @@ int wmain(int argc, wchar_t** argv) {
     CHECK(released.source == 2 && released.down == 0);
     CHECK(GetForegroundWindow() == target);
     CHECK(SendMessageW(widget, WM_MOUSEACTIVATE, 0, 0) == MA_NOACTIVATE);
+    SetCursorPos(cursor.x, cursor.y);
     std::cout << "Editable/read-only/disabled/non-text metadata; real global input, UK/US backslash, repeat, modifier release, Escape passthrough, unchanged target text/focus, recovery, drag, zoom, tooltip delay/copy/live update and microphone edges passed.\n";
 }
