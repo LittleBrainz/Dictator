@@ -4,7 +4,7 @@ This is a fresh implementation of Dictator, not a reconstruction of the deleted
 C++ prototype. Read `docs/SPECIFICATION.md` and the requested phase. Later explicit
 requirements override generic framework conventions. Phase 0 passed Windows CI and
 the user accepted the staged artifact. The user accepted Phases 1 and 2. The current scope is the user-requested Widget
-design refinement before Phase 3. Keep the two glossy blue capsules (270 x 65
+design refinement before Phase 3. Keep the two glossy blue capsules (270 x 63
 DIP) separated by a real desktop-visible, click-through gap. The upper strip
 shows white raw transcription scrolling right-to-left while Talking; off-state
 hover information fades in blue after one second, without a separate tooltip

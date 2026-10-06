@@ -1,12 +1,19 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <deque>
 #include <string>
 #include <utility>
 
 // UI-thread presentation state only. No provider, formatting, persistence or logging.
 namespace widget_design {
+inline constexpr wchar_t hint_separator[] = L"   ·   ";
+inline float hint_scroll_x(float period, uint64_t elapsed) noexcept {
+    // One initial reading pause; repeated copies then move without a wrap pause.
+    if (period <= 0 || elapsed <= 1200) return 9;
+    return 9 - std::fmod(static_cast<float>(elapsed - 1200) * .024f, period);
+}
 inline float hover_opacity(uint64_t elapsed) noexcept {
     return elapsed > 1000 ? std::min(1.f, static_cast<float>(elapsed - 1000) / 240) : 0;
 }

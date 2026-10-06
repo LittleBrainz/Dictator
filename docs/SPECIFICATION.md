@@ -658,7 +658,7 @@ The Widget:
 Use the latest user-supplied mock-up: two separate glossy blue capsules with
 cyan/chrome rims and dark navy interiors, a text capsule above a control/waveform
 capsule, left circular microphone, cyan waveform in the middle, and circular
-Settings/Close controls on the right. The approximately 4 DIP gap is genuinely
+Settings/Close controls on the right. The approximately 2 DIP gap is genuinely
 transparent and click-through: show the desktop/application behind it. Do not
 paint or simulate a desktop background in the gap.
 Keep the Widget itself compact; the mock-up desktop background is not part of it.
@@ -727,7 +727,7 @@ Desired behavior:
 
 Use a compact design informed by the accepted prototype:
 
-- base size **270 by 65 DIP** at 1.000 zoom;
+- base size **270 by 63 DIP** at 1.000 zoom;
 - waveform/body width is compact, roughly 60% of the earlier prototype direction;
 - final dimensions may be tuned during Phase 2 acceptance, but do not drift back to a broad status panel.
 
@@ -775,7 +775,9 @@ Position rules:
 When not Talking, hover information appears **inside the top text capsule** in
 blue. Wait **1 second**, then fade in smoothly over approximately 240 ms. Moving
 between hit regions restarts the delay. Leaving, dragging or pressing a control
-clears the hint. Long information may scroll gently so all instructions fit.
+clears the hint. Captions use a 9.8 DIP font, 70% of the former 14 DIP size.
+Long information scrolls gently in a continuous loop, with the next repetition
+immediately following the end using the same spaced middle-dot separator.
 While Talking the strip belongs exclusively to white raw text; suppress hints.
 
 Retain the contextual information for waveform/body, microphone, tools and close.

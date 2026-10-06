@@ -30,6 +30,7 @@ struct dictator_host {
     uint64_t target{}, hover_at{}, hint_at{}, text_epoch{};
     wchar_t hint[768]{};
     float hint_width{};
+    float hint_period{};
     widget_design::ticker_text ticker;
     dictator_target current{};
     wchar_t hotkey[128]{L"Ctrl-Alt-\\"};
@@ -50,7 +51,7 @@ uint64_t mouse_timestamp() noexcept {
 }
 void hide_tooltip(dictator_host* h) noexcept {
     if (!h->hint[0]) return;
-    h->hint[0] = 0; h->hint_width = 0;
+    h->hint[0] = 0; h->hint_width = 0; h->hint_period = 0;
     SetWindowTextW(h->widget, L"Dictator Widget"); InvalidateRect(h->widget, nullptr, FALSE);
 }
 void close_widget(dictator_host* h) noexcept {
@@ -148,12 +149,14 @@ void show_tooltip(dictator_host* h) noexcept {
     wchar_t binding[160]{}, content[768]{};
     const auto copy = tooltip_text(h, binding, std::size(binding));
     for (int i = 0; i < copy.count; ++i) {
-        if (i > 0) wcscat_s(content, L"   ·   ");
+        if (i > 0) wcscat_s(content, widget_design::hint_separator);
         wcscat_s(content, copy.lines[i]);
     }
     if (wcscmp(content, h->hint) == 0) return;
     wcscpy_s(h->hint, content); h->hint_at = GetTickCount64();
     h->hint_width = widget_design::measure_text(h->hint, static_cast<int>(wcslen(h->hint)));
+    h->hint_period = h->hint_width > 252 ? h->hint_width +
+        widget_design::measure_text(widget_design::hint_separator, -1) : 0;
     // Expose hover instructions to accessibility clients, never live transcript text.
     SetWindowTextW(h->widget, h->hint); InvalidateRect(h->widget, nullptr, FALSE);
 }
@@ -279,13 +282,9 @@ void draw_widget(dictator_host* h, HWND hwnd, HDC destination) noexcept {
     const auto now = GetTickCount64(); h->ticker.advance(now);
     const auto elapsed = now - h->hover_at;
     const float alpha = widget_design::hover_opacity(elapsed);
-    float hint_x = 9;
-    if (h->hint_width > 252 && now - h->hint_at > 1200) {
-        const auto distance = static_cast<float>(now - h->hint_at - 1200) * .024f;
-        hint_x -= std::fmod(distance, h->hint_width + 40);
-    }
+    const float hint_x = widget_design::hint_scroll_x(h->hint_period, now - h->hint_at);
     widget_design::paint(destination, rect.right, rect.bottom, h->talking, h->current.eligible != 0,
-        h->hover, h->pressed_region, now, h->ticker, h->hint, alpha, hint_x);
+        h->hover, h->pressed_region, now, h->ticker, h->hint, alpha, hint_x, h->hint_width, h->hint_period);
 }
 void paint_widget(dictator_host* h, HWND hwnd) noexcept {
     PAINTSTRUCT paint{}; auto surface = BeginPaint(hwnd, &paint);

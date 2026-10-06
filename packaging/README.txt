@@ -1,6 +1,6 @@
 Dictator - Phase 2 interaction preview
 
-Download Dictator v0.2.3.zip and extract the complete artifact once, then double-click Dictator.exe.
+Download Dictator v0.2.4.zip and extract the complete artifact once, then double-click Dictator.exe.
 Windows 11 x64 is required. No separate .NET, Windows App SDK, or development
 tools are needed. Dictator.exe is a small launcher; the application and runtimes
 are unpacked under lib/WinUI. Startup does not extract them into Temp.

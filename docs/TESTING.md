@@ -47,7 +47,7 @@ not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.2.3** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.2.4** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -119,7 +119,7 @@ and the 1000 ms delay/240 ms fade curve. A window-procedure observer records eve
 position against all four screen edges at every zoom stop, requiring one bounded
 move per update instead of an out-of-bounds move followed by correction. The user's Windows desktop acceptance confirmed Phase 2
 before this visual refinement; repeat appearance and taskbar placement below for
-v0.2.3, including an auto-hidden taskbar and secondary monitors.
+v0.2.4, including an auto-hidden taskbar and secondary monitors.
 
 ## Phase 2 manual Windows 11 acceptance
 
@@ -150,7 +150,9 @@ v0.2.3, including an auto-hidden taskbar and secondary monitors.
    the complete Widget scales and stays within the available work area.
 7. Hover each hit region: the top strip stays empty for one second, then blue
    contextual information fades in. Moving regions restarts the delay. Long hints
-   scroll to reveal the configured Hotkey. Eligibility updates visible hints.
+   scroll to reveal the configured Hotkey and repeat continuously, with the same
+   dot separator between repetitions and no blank pause or restart jump. Check
+   the smaller caption font and 2 DIP inter-panel gap. Eligibility updates visible hints.
    Talking clears/suppresses hints; no popup window or focus theft. Confirm the
    gap and rounded corners show the actual background and pass clicks through.
    Check light, dark and System Settings themes. Real white raw text is Phase 4;
