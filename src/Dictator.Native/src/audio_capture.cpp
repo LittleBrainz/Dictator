@@ -19,9 +19,17 @@ using Microsoft::WRL::ComPtr;
 namespace {
 class notifications final : public IMMNotificationClient {
     std::atomic<ULONG> references_{1};
-    dictator_audio& owner_;
+    std::mutex callback_;
+    dictator_audio* owner_;
+    void notify(LPCWSTR id, bool unavailable, bool default_changed) noexcept {
+        std::lock_guard lock(callback_);
+        if (owner_) owner_->changed(id, unavailable, default_changed);
+    }
 public:
-    explicit notifications(dictator_audio& owner) noexcept : owner_(owner) {}
+    explicit notifications(dictator_audio& owner) noexcept : owner_(&owner) {}
+    // Unregister may leave queued COM notifications; sever their borrowed owner
+    // while serializing with any callback already in progress.
+    void detach() noexcept { std::lock_guard lock(callback_); owner_ = nullptr; }
     virtual ~notifications() = default;
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** output) override {
         if (!output) return E_POINTER;
@@ -36,15 +44,15 @@ public:
         const auto left = --references_; if (!left) delete this; return left;
     }
     HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR id, DWORD state) override {
-        owner_.changed(id, state != DEVICE_STATE_ACTIVE, false); return S_OK;
+        notify(id, state != DEVICE_STATE_ACTIVE, false); return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR id) override { owner_.changed(id, false, false); return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR id) override { owner_.changed(id, true, false); return S_OK; }
+    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR id) override { notify(id, false, false); return S_OK; }
+    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR id) override { notify(id, true, false); return S_OK; }
     HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR id) override {
-        if (flow == eCapture && role == eConsole) owner_.changed(id, false, true); return S_OK;
+        if (flow == eCapture && role == eConsole) notify(id, false, true); return S_OK;
     }
     HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR id, const PROPERTYKEY) override {
-        owner_.changed(id, false, false); return S_OK;
+        notify(id, false, false); return S_OK;
     }
 };
 uint32_t classify(HRESULT hr) noexcept {
@@ -245,7 +253,7 @@ void dictator_audio::run() noexcept {
                     rms_.store(count ? static_cast<float>(std::sqrt(square / count)) : 0);
                 }
             }
-            release(); if (!fatal_.load()) state_.store(0); enumerator->UnregisterEndpointNotificationCallback(listener.Get());
+            release(); if (!fatal_.load()) state_.store(0); enumerator->UnregisterEndpointNotificationCallback(listener.Get()); listener->detach();
         }
     }
     CoUninitialize();

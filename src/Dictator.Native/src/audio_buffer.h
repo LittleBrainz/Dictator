@@ -9,6 +9,11 @@
 namespace audio_data {
 // One native producer, one serialized non-real-time consumer. Drop-new overflow;
 // consumed/stale samples are zeroed before publishing free slots to the producer.
+#ifdef _MSC_VER
+#pragma warning(push)
+// Deliberate cache-line separation of the two independently written cursors.
+#pragma warning(disable: 4324)
+#endif
 template<std::size_t Capacity> class ring_buffer {
     std::array<float, Capacity> samples_{};
     alignas(64) std::atomic<uint64_t> head_{};
@@ -39,6 +44,9 @@ public:
         return static_cast<uint32_t>(std::min(uint64_t{Capacity}, head_.load(std::memory_order_acquire) - tail));
     }
 };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 inline float sample(const unsigned char* data, unsigned bits, bool floating) noexcept {
     if (floating) {
         float value{}; std::memcpy(&value, data, sizeof(value));
@@ -46,7 +54,7 @@ inline float sample(const unsigned char* data, unsigned bits, bool floating) noe
     }
     if (bits == 8) return (static_cast<float>(*data) - 128) / 128;
     int32_t value{};
-    if (bits == 16) { int16_t small{}; std::memcpy(&small, data, 2); return static_cast<float>(small) / 32768; }
+    if (bits == 16) { int16_t value16{}; std::memcpy(&value16, data, 2); return static_cast<float>(value16) / 32768; }
     if (bits == 24) {
         uint32_t raw = data[0] | (static_cast<uint32_t>(data[1]) << 8) | (static_cast<uint32_t>(data[2]) << 16);
         if (raw & 0x800000) raw |= 0xFF000000;
