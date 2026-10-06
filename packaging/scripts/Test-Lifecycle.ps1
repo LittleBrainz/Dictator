@@ -19,7 +19,10 @@ $sequence = 0
 $hostProcess = $null
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $valueName = 'Dictator.Phase1.Test'
-$existing = Get-ItemPropertyValue $run $valueName -ErrorAction SilentlyContinue
+function Read-StartupValue {
+    return [Microsoft.Win32.Registry]::GetValue('HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run', $valueName, $null)
+}
+$existing = Read-StartupValue
 function Request([string] $Command) {
     $script:sequence++
     $output = Join-Path $EvidenceRoot "lifecycle-$sequence-$Command.json"
@@ -89,10 +92,10 @@ try {
     if ($changed.preferences.Theme -ne 'Dark' -or $changed.preferences.WidgetZoom -ne 1.155 -or
         $changed.preferences.Hotkey.Modifiers -ne 6 -or $changed.settingsError) { throw 'Preferences could not be saved.' }
     $enabled = Request 'startup-on'
-    $registered = Get-ItemPropertyValue $run $valueName
+    $registered = Read-StartupValue
     if (-not $enabled.startupEnabled -or $registered -ne "`"$launcher`" --startup") { throw 'Per-user startup registration is invalid.' }
     $disabled = Request 'startup-off'
-    if ($disabled.startupEnabled -or (Get-ItemPropertyValue $run $valueName -ErrorAction SilentlyContinue)) { throw 'Per-user startup registration was not removed.' }
+    if ($disabled.startupEnabled -or (Read-StartupValue)) { throw 'Per-user startup registration was not removed.' }
     # A real file-sharing failure must leave both settings and an existing startup
     # command intact, including a registration pointing at an older artifact path.
     $oldCommand = '"C:\previous installation\Dictator.exe" --startup'
@@ -102,7 +105,7 @@ try {
     $locked = [IO.File]::Open($settingsFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try { $failure = Request 'startup-on' }
     finally { $locked.Dispose() }
-    if (-not $failure.settingsError -or (Get-ItemPropertyValue $run $valueName) -ne $oldCommand -or
+    if (-not $failure.settingsError -or (Read-StartupValue) -ne $oldCommand -or
         (Get-Content $settingsFile -Raw) -ne $beforeSettings) { throw 'Startup rollback lost the previous registration or settings.' }
     Remove-ItemProperty $run $valueName
     $null = Request 'set-preferences'
