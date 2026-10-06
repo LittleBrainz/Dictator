@@ -51,7 +51,7 @@ internal sealed class AudioBridge : IDisposable
     }
     internal void EndTransfer()
     {
-        lock (transfer) { sink = null; captureSession = null; }
+        lock (transfer) { sink = null; captureSession = null; transferFailed = false; captureCancelled = false; }
     }
     internal AudioBridge(nint handle)
     {
