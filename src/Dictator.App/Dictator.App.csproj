@@ -24,10 +24,16 @@
     <Title>Dictator</Title>
     <RootNamespace>Dictator.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../assets/Dictator.ico</ApplicationIcon>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <DebugType>embedded</DebugType>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../../assets/Dictator.ico">
+      <Link>Assets/Dictator.ico</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
     <ProjectReference Include="../Dictator.Core/Dictator.Core.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.VCRTForwarders.140" />

@@ -3,18 +3,53 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Dictator Settings">
-  <ScrollViewer>
-    <StackPanel x:Name="DiagnosticsRoot" Padding="32" Spacing="16" MaxWidth="960" HorizontalAlignment="Stretch">
-      <TextBlock Text="Dictator Settings" Style="{StaticResource TitleTextBlockStyle}" />
-      <TextBlock Text="Diagnostics" Style="{StaticResource SubtitleTextBlockStyle}" />
-      <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
-               Title="Phase 0"
-               Message="This build verifies the application, native bridge, and distribution. Dictation and tray controls arrive in later phases." />
-      <TextBox x:Name="IdentityText" Header="Build and native bridge identity"
-               IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
-               FontFamily="Consolas" />
-      <TextBlock Text="The native bridge completed a UTF-16 round-trip and a polling call. No microphone or network session is running."
-                 TextWrapping="Wrap" />
-    </StackPanel>
-  </ScrollViewer>
+  <NavigationView x:Name="Navigation" IsSettingsVisible="False" PaneDisplayMode="Left"
+                  IsBackButtonVisible="Collapsed" SelectionChanged="OnNavigationChanged">
+    <NavigationView.MenuItems>
+      <NavigationViewItem Content="General" Tag="General" Icon="Setting" />
+      <NavigationViewItem Content="Widget" Tag="Widget" Icon="View" />
+      <NavigationViewItem Content="Speech" Tag="Speech" Icon="Microphone" />
+      <NavigationViewItem Content="AI / Models" Tag="AI / Models" Icon="Library" />
+      <NavigationViewItem Content="Dictionary" Tag="Dictionary" Icon="Font" />
+      <NavigationViewItem Content="Phrase Shortcuts" Tag="Phrase Shortcuts" Icon="Edit" />
+      <NavigationViewItem Content="History" Tag="History" Icon="Clock" />
+      <NavigationViewItem Content="Applications" Tag="Applications" Icon="AllApps" />
+      <NavigationViewItem Content="Diagnostics" Tag="Diagnostics" Icon="Document" />
+    </NavigationView.MenuItems>
+    <ScrollViewer>
+      <StackPanel x:Name="DiagnosticsRoot" Padding="32,24" Spacing="20" MaxWidth="800"
+                  HorizontalAlignment="Stretch">
+        <TextBlock x:Name="PageTitle" Text="General" Style="{StaticResource TitleTextBlockStyle}" />
+        <InfoBar x:Name="SettingsError" IsClosable="False" Severity="Error" Title="Settings need attention" />
+        <StackPanel x:Name="GeneralPage" Spacing="24">
+          <ToggleSwitch x:Name="StartupSwitch" Header="Start with Windows" Toggled="OnStartupChanged"
+                        OnContent="On" OffContent="Off" />
+          <ComboBox x:Name="ThemeChoice" Header="Theme" SelectionChanged="OnThemeChanged" MinWidth="240">
+            <x:String>System</x:String><x:String>Light</x:String><x:String>Dark</x:String>
+          </ComboBox>
+          <StackPanel Spacing="8">
+            <TextBox x:Name="HotkeyBox" Header="Hotkey" IsReadOnly="True" KeyDown="OnHotkeyDown" />
+            <TextBlock Text="Select the field and press a key combination to save it. Hotkey interaction arrives with the Widget preview."
+                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Button x:Name="ResetHotkeyButton" Content="Restore Ctrl+Alt+\" Click="OnResetHotkey" />
+          </StackPanel>
+        </StackPanel>
+        <StackPanel x:Name="WidgetPage" Visibility="Collapsed" Spacing="12">
+          <TextBlock Text="Widget Zoom" Style="{StaticResource SubtitleTextBlockStyle}" />
+          <Slider x:Name="ZoomChoice" Minimum="0" Maximum="4" StepFrequency="1" TickFrequency="1"
+                  ValueChanged="OnZoomChanged" MaxWidth="400" HorizontalAlignment="Stretch"
+                  AutomationProperties.Name="Widget Zoom" />
+          <TextBlock Text="Choose one of five sizes. The middle stop is the default." TextWrapping="Wrap" />
+          <Button Content="Open Widget" Click="OnOpenWidget" />
+        </StackPanel>
+        <StackPanel x:Name="DiagnosticsPage" Visibility="Collapsed" Spacing="12">
+          <Button Content="Copy" Click="OnCopyDiagnostics" />
+          <TextBox x:Name="IdentityText" Header="Diagnostics" IsReadOnly="True" AcceptsReturn="True"
+                   TextWrapping="Wrap" FontFamily="Consolas" />
+        </StackPanel>
+        <TextBlock x:Name="FuturePage" Visibility="Collapsed" TextWrapping="Wrap"
+                   Text="This section will become available as its features are added." />
+      </StackPanel>
+    </ScrollViewer>
+  </NavigationView>
 </Window>

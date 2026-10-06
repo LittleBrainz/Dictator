@@ -35,7 +35,7 @@ public sealed record BuildInfo(
             info.GitCommit is null || info.GitCommit.Length != 40 ||
             !info.GitCommit.All(Uri.IsHexDigit))
         {
-            throw new InvalidDataException("Build identity is incomplete or incompatible with this Phase 0 build.");
+            throw new InvalidDataException("Build identity is incomplete or incompatible with this build.");
         }
         return info;
     }

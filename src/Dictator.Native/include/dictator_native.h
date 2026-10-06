@@ -30,6 +30,8 @@ typedef uint32_t dictator_result;
 #define DICTATOR_ABI_MISMATCH UINT32_C(2)
 #define DICTATOR_BUFFER_TOO_SMALL UINT32_C(3)
 #define DICTATOR_OUT_OF_MEMORY UINT32_C(4)
+#define DICTATOR_PLATFORM_ERROR UINT32_C(5)
+#define DICTATOR_WRONG_THREAD UINT32_C(6)
 
 // Natural 8-byte alignment; exactly 24 bytes on the supported x64 ABI.
 // Initialize struct_size to sizeof(dictator_snapshot) before calling poll.
@@ -51,7 +53,8 @@ DICTATOR_API dictator_result DICTATOR_CALL dictator_create_context(
 DICTATOR_API void DICTATOR_CALL dictator_destroy_context(dictator_context* context) DICTATOR_NOEXCEPT;
 // Polling runs synchronously on the calling non-real-time consumer thread.
 // Calls for a given context must be serialized; separate contexts are independent.
-// No callbacks, worker threads, UI, audio, or I/O are started by this Phase 0 ABI.
+// These context/probe operations start no callbacks, workers, UI, audio or I/O.
+// Resident surface operations below explicitly create native UI on the caller thread.
 DICTATOR_API dictator_result DICTATOR_CALL dictator_poll(
     dictator_context* context, dictator_snapshot* snapshot) DICTATOR_NOEXCEPT;
 // UTF-16 code units, including surrogate pairs and embedded NULs, are copied verbatim.
@@ -61,6 +64,23 @@ DICTATOR_API dictator_result DICTATOR_CALL dictator_poll(
 DICTATOR_API dictator_result DICTATOR_CALL dictator_copy_text(
     dictator_context* context, const uint16_t* input, uint32_t input_count,
     uint16_t* output, uint32_t output_capacity, uint32_t* required_count) DICTATOR_NOEXCEPT;
+
+#if defined(_WIN32)
+// Additive ABI 1 resident surface. All calls, including destruction, must run on
+// the creating UI thread. Windows messages run on that thread's existing pump.
+// No managed callbacks. poll_events transfers a bitset: Widget=1, Settings=2,
+// Restart=4, Quit=8. Native owns HWNDs, tray icon, menu and drawing resources.
+typedef struct dictator_host dictator_host;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_create(
+    uint32_t requested_abi, dictator_host** out_host) DICTATOR_NOEXCEPT;
+DICTATOR_API void DICTATOR_CALL dictator_host_destroy(dictator_host* host) DICTATOR_NOEXCEPT;
+DICTATOR_API uint32_t DICTATOR_CALL dictator_host_poll_events(dictator_host* host) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_set_widget(
+    dictator_host* host, uint32_t visible, double zoom, uint32_t theme) DICTATOR_NOEXCEPT;
+// Borrowed HWND; never destroy or retain after host destruction. Diagnostic only.
+DICTATOR_API uintptr_t DICTATOR_CALL dictator_host_widget_handle(dictator_host* host) DICTATOR_NOEXCEPT;
+DICTATOR_API uint32_t DICTATOR_CALL dictator_host_tray_ready(dictator_host* host) DICTATOR_NOEXCEPT;
+#endif
 
 #ifdef __cplusplus
 }

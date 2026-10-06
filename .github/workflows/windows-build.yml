@@ -29,15 +29,20 @@ jobs:
           cache: true
           cache-dependency-path: '**/packages.lock.json'
       - name: Build, test, publish, stage, and verify the actual package
+        id: package
         shell: pwsh
-        run: ./packaging/scripts/Build.ps1
+        run: |
+          ./packaging/scripts/Build.ps1
+          $identity = Get-Content artifacts/Dictator/lib/build-info.json -Raw | ConvertFrom-Json
+          "artifact_name=Dictator v$($identity.productVersion)" >> $env:GITHUB_OUTPUT
       - name: Upload test and packaging evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: Phase0-test-results
+          name: Phase1-test-results
           path: |
             artifacts/test-results/
+            artifacts/native/Testing/Temporary/LastTest.log
             artifacts/publish-manifest.txt
             artifacts/package smoke with spaces*/*.json
           if-no-files-found: ignore
@@ -45,7 +50,7 @@ jobs:
       - name: Upload one-extraction application
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: Dictator
+          name: ${{ steps.package.outputs.artifact_name }}
           path: artifacts/Dictator/
           if-no-files-found: error
           retention-days: 7

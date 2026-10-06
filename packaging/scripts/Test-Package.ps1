@@ -65,7 +65,7 @@ function Invoke-Smoke([string] $Mode, [bool] $ExpectUi) {
     }
     $included = @($runtimeConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' -and $_.version -eq $identity.dotnetRuntimeVersion })
     if ($included.Count -ne 1) { throw 'Self-contained runtime identity is absent from the extracted configuration.' }
-    foreach ($locale in @('en-GB', 'en-US', 'zh-CN')) {
+    foreach ($locale in @('en-GB', 'en-US', 'fr-FR', 'zh-CN')) {
         if (-not (Test-Path (Join-Path $runtime $locale))) { throw "App-local locale missing: $locale" }
     }
     Write-Host "$Mode completed in $($timer.Elapsed.TotalSeconds.ToString('F2')) s with app-local runtime and profile data path."
@@ -75,6 +75,25 @@ try {
     Invoke-Smoke 'smoke-test' $false
     Invoke-Smoke 'smoke-test' $false
     Invoke-Smoke 'ui-smoke-test' $true
+
+    # Load real WinUI XAML with each retained language and a removed-language
+    # fallback. Keep neutral PRI resources and let the SDK select its fallback.
+    foreach ($locale in @('en-GB', 'en-US', 'fr-FR', 'zh-CN', 'de-DE')) {
+        $localeReport = Join-Path $sandbox "locale-$locale.json"
+        $probe = Start-Process "$extracted/Dictator.exe" -ArgumentList @('--locale-smoke-test', $locale, "`"$localeReport`"") -PassThru
+        if (-not $probe.WaitForExit(30000)) { $probe.Kill($true); throw "Locale $locale timed out." }
+        if ($probe.ExitCode -ne 0 -or -not (Test-Path $localeReport)) {
+            $detail = if (Test-Path $localeReport) { Get-Content $localeReport -Raw } else { 'No locale report.' }
+            throw "WinUI locale $locale failed: $detail"
+        }
+        $localeReady = Get-Content $localeReport -Raw | ConvertFrom-Json
+        if ($localeReady.status -ne 'ok' -or -not $localeReady.uiReady) { throw "WinUI locale $locale did not load." }
+    }
+    $allowed = @('en-GB', 'en-US', 'fr-FR', 'zh-CN')
+    $unexpected = @(Get-ChildItem "$extracted/lib/WinUI" -Directory -Recurse | Where-Object {
+        $_.Name -match '^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$' -and $_.Name -notin $allowed
+    })
+    if ($unexpected.Count) { throw "Unexpected locale directories: $($unexpected.Name -join ', ')" }
 
     # Normal launches must leave only the managed host running, not a resident helper.
     $normalReport = Join-Path $sandbox 'normal-launch.json'
@@ -108,6 +127,8 @@ try {
         if ($hostProcess -and -not $hostProcess.HasExited) { $hostProcess.Kill($true) }
         if (-not $launcher.HasExited) { $launcher.Kill($true) }
     }
+
+    & "$PSScriptRoot/Test-Lifecycle.ps1" -PackageRoot $extracted -EvidenceRoot $sandbox
 
     # Useful dependency error is also part of the staged product contract.
     Remove-Item "$extracted/lib/Native/Dictator.Native.dll"

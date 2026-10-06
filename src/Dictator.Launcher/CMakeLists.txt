@@ -1,4 +1,4 @@
-add_executable(Dictator.Launcher WIN32 launcher.cpp launcher.manifest)
+add_executable(Dictator.Launcher WIN32 launcher.cpp launcher.manifest "${CMAKE_BINARY_DIR}/Dictator.icon.rc")
 set_target_properties(Dictator.Launcher PROPERTIES OUTPUT_NAME Dictator)
 target_compile_definitions(Dictator.Launcher PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_options(Dictator.Launcher PRIVATE /W4 /WX /permissive- /utf-8)

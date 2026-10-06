@@ -11,6 +11,17 @@
 
 ---
 
+## Accepted implementation updates
+
+Phase 0 was accepted by the user after successful Windows CI and manual launch.
+The current implementation scope is Phase 1. The testing artifact retains only
+`en-GB`, `en-US`, `fr-FR` and `zh-CN` locale directories; other locales can be
+reintroduced later. Neutral runtime resources remain intact.
+
+The user also requires versioned artifact ZIP names (for example,
+`Dictator v0.1.0.zip`) and a stylized microphone application/tray icon. This
+supersedes the original unversioned artifact-name requirement below.
+
 ## 1. Executive summary
 
 Build **Dictator**, a resident Windows 11 application that provides low-friction system-wide voice dictation.
@@ -1391,11 +1402,11 @@ For v1 use normal .NET self-contained publishing unless Phase 0 proves a better 
 
 ### 29.3 Artifact naming
 
-GitHub Actions artifact name must be exactly:
+GitHub Actions artifact name must include the product version:
 
-**Dictator**
+**Dictator v<version>**
 
-The downloaded artifact therefore appears as **Dictator.zip**.
+For example, version 0.1.0 downloads as **Dictator v0.1.0.zip**.
 
 Do not append:
 
@@ -1772,7 +1783,7 @@ CI must:
 - stage tidy distribution;
 - verify build metadata;
 - run packaged smoke tests that can execute headlessly/non-interactively;
-- upload artifact named **Dictator**.
+- upload artifact named **Dictator v<version>**.
 
 ### 37.3 Current actions
 
@@ -1928,7 +1939,7 @@ Deliver:
 - current stable Windows App SDK 2.5.1 baseline or later stable version if reverified at bootstrap;
 - standard Windows GitHub Actions workflow;
 - self-contained win-x64 publish;
-- artifact named `Dictator`;
+- artifact named `Dictator v<version>`;
 - one-extraction staging;
 - tidy root layout;
 - `lib/WinUI` locale/resource strategy;
@@ -1941,7 +1952,7 @@ Acceptance:
 - Codex Cloud can modify the repo through the GitHub workflow;
 - Windows CI builds managed and native projects;
 - ABI contract test passes;
-- `Dictator.zip` extracts once;
+- `Dictator v<version>.zip` extracts once;
 - user launches `Dictator.exe` successfully on Windows 11 without Visual Studio or separate .NET/Windows App SDK installation;
 - launch works from path containing spaces and different working directory;
 - Diagnostics reports correct managed/native/build identity;
@@ -2344,7 +2355,7 @@ versioned P/Invoke ABI test
    ↓
 self-contained staged Dictator artifact
    ↓
-Dictator.zip
+Dictator v<version>.zip
    ↓
 manual launch on the user's ordinary Windows 11 PC
 ```

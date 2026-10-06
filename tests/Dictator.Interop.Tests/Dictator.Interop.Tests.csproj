@@ -8,6 +8,7 @@
   <ItemGroup>
     <!-- Test the production bridge without taking a dependency on the WinUI shell. -->
     <Compile Include="../../src/Dictator.App/NativeInterop/*.cs" Link="NativeInterop/%(Filename)%(Extension)" />
+    <ProjectReference Include="../../src/Dictator.Core/Dictator.Core.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />

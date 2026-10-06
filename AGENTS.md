@@ -2,8 +2,8 @@
 
 This is a fresh implementation of Dictator, not a reconstruction of the deleted
 C++ prototype. Read `docs/SPECIFICATION.md` and the requested phase. Later explicit
-requirements override generic framework conventions. Phase 0 is the current scope;
-Phase 1 requires green Windows CI and a successful manual staged-artifact launch.
+requirements override generic framework conventions. Phase 0 passed Windows CI and
+the user accepted the staged artifact. Phase 1 is the current scope.
 
 ## Platform and architecture
 
@@ -19,6 +19,7 @@ Phase 1 requires green Windows CI and a successful manual staged-artifact launch
   `%LOCALAPPDATA%\Programs\Dictator`. No config lives with the binaries.
 - The root `Dictator.exe` is a short-lived native launcher. The managed host and
   complete self-contained publish tree live in `lib/WinUI`; no runtime self-extraction.
+- Keep only en-GB, en-US, fr-FR and zh-CN locale directories in the artifact.
 - Credentials belong only in Windows Credential Manager. No telemetry or audio retention.
 - No transcript content in logs by default. Never dump credentials or environment values.
 - User-facing words: Dictator Settings, Widget, Hotkey, Talk/Talking, Phrase Shortcuts.
