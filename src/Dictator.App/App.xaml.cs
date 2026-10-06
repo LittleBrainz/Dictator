@@ -56,6 +56,7 @@ public partial class App : Application
         Process creation to Widget shown (not a first-paint measurement): {widgetReadyMs:F2} ms
         Last Settings activation call duration (not first paint): {(settingsActivationMs.HasValue ? settingsActivationMs.Value.ToString("F2") + " ms" : "not activated")}
         Provider: {speechProvider.Name}; model: {speechProvider.Model}; state: {SpeechStatus}
+        Transcription session: {transcription?.Session.SessionId.ToString() ?? "none"}
         API credential stored: {ApiKeyConfigured}
         Final transcript characters (content excluded): {LastTranscript.Length}
         Speech error: {SpeechError ?? "none"}
@@ -136,7 +137,7 @@ public partial class App : Application
             {
                 var target = host.Target;
                 var cancelled = false;
-                if (transcription is not null && (target.Eligible == 0 || target.Token != transcription.Target)) CancelTranscription();
+                if (transcription is not null && transcription.MustCancelForTarget(target.Eligible != 0 ? target.Token : 0)) CancelTranscription();
                 preview.RefreshTarget(target.Eligible != 0 ? target.Token : 0);
                 while (host.TryInput(out var input))
                 {

@@ -31,6 +31,7 @@ public sealed class OpenAiTranscriptionProvider : ITranscriptionProvider
         private int state, started, completing, committed, deltaCharacters;
         private TranscriptionFailure? failure;
         private string? itemId;
+        public Guid SessionId { get; } = Guid.NewGuid();
         public TranscriptionState State => (TranscriptionState)Volatile.Read(ref state);
         public TranscriptionFailure? Failure => Volatile.Read(ref failure);
         public Task StartAsync(string apiKey, CancellationToken cancellationToken = default)

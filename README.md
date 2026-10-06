@@ -42,5 +42,6 @@ Focus loss, closing the Widget, microphone changes and capture errors stop Talki
 The red inactive microphone has a stronger glow and no slash. Ticker and hover
 scrolling are 1.5 times faster; the live text strip displays real raw transcription.
 Stopping commits the audio; the latest final transcript is available in Speech
-settings with a Copy button, in memory only. Focus loss cancels a pending session.
+settings with a Copy button, in memory only. Focus loss while Talking cancels the session; after normal stop the final result
+can finish in memory while Speech settings is open.
 Network errors stop safely; another Talk gesture creates a fresh connection.

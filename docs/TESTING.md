@@ -250,7 +250,7 @@ On Windows 11:
    must fail before capture and preserve target focus. Re-enter to continue.
 2. Focus a writable field, Talk and speak English, French and Chinese as appropriate.
    Check real waveform levels and smoothly scrolling white raw text in the spoken
-   language. Stop normally; wait for Completed before opening Speech. Inspect/copy
+   language. Stop normally, then open Speech and wait for Completed. Inspect/copy
    the authoritative final transcript. No text is inserted into the target yet.
 3. Test tap/hold with Hotkey and mic, silence, a very short phrase, rapid stop/start,
    and long speech. Last audio must finalize cleanly, storage stays bounded, and old

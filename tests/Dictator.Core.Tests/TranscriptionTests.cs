@@ -142,9 +142,10 @@ public sealed class TranscriptionTests
     {
         await using var session = new OpenAiTranscriptionProvider().CreateSession();
         var run = new TranscriptionRun(session, 8, 12);
+        Assert.True(run.MustCancelForTarget(0)); Assert.False(run.MustCancelForTarget(8));
         Assert.True(run.CanDisplay(8, 12)); Assert.False(run.CanDisplay(8, 13)); Assert.False(run.CanDisplay(9, 12));
         Assert.True(run.Append(new float[100], 24000));
-        run.RequestFinish(); Assert.False(run.CanDisplay(8, 12));
+        run.RequestFinish(); Assert.False(run.CanDisplay(8, 12)); Assert.False(run.MustCancelForTarget(0));
         Assert.True(run.Append(new float[100], 24000)); // Final native drain is accepted.
         run.Finish(); Assert.True(run.Finishing); Assert.False(run.Append(new float[100], 24000));
         run.Cancel(); Assert.True(run.Invalidated); Assert.False(run.CanDisplay(8, 12));

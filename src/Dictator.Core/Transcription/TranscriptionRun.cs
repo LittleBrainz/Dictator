@@ -36,6 +36,10 @@ public sealed class TranscriptionRun(ITranscriptionSession session, ulong target
     {
         Invalidated = true; converter?.Clear(); Session.Cancel();
     }
+    // Once the microphone is stopped normally, a final result may finish in
+    // memory while Settings has focus. It never updates an old target/window.
+    public bool MustCancelForTarget(ulong eligibleTarget)
+        => !EndRequested && Target != eligibleTarget;
     public bool CanDisplay(ulong currentTarget, ulong currentPresentation)
         => !Invalidated && !EndRequested && !Finishing && Target == currentTarget && Presentation == currentPresentation;
 }

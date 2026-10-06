@@ -356,8 +356,10 @@ backpressure clears only old ticker content; the authoritative final text remain
 complete in its separate bounded result. The upper strip retains its accepted
 visibility/geometry. Normal stop hides it; Speech settings offers the latest final
 transcript and explicit Copy, in memory only. It clears on the next successful Talk
-start and disappears on Quit. Opening Settings while still capturing/finalizing
-loses target eligibility and cancels that pending session; no insertion occurs.
+start and disappears on Quit. Opening Settings while capturing loses target eligibility and cancels that
+session. After a normal stop, the final transcript can finish in memory while
+Settings has focus; it never updates the former target or inserts text. A new Talk
+session, close, rebind, device change, restart or Quit still invalidates it.
 
 Connect/configuration acknowledgment, send and finalization timeouts are 10/10,
 5 and 15 seconds respectively. The background consumer can request native capture cancellation without waiting

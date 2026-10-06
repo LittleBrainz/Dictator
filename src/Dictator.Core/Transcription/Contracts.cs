@@ -15,6 +15,7 @@ public interface ITranscriptionProvider
 }
 public interface ITranscriptionSession : IAsyncDisposable
 {
+    Guid SessionId { get; }
     TranscriptionState State { get; }
     TranscriptionFailure? Failure { get; }
     Task StartAsync(string apiKey, CancellationToken cancellationToken = default);
