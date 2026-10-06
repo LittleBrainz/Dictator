@@ -71,6 +71,29 @@ DICTATOR_API dictator_result DICTATOR_CALL dictator_copy_text(
 // No managed callbacks. poll_events transfers a bitset: Widget=1, Settings=2,
 // Restart=4, Quit=8. Native owns HWNDs, tray icon, menu and drawing resources.
 typedef struct dictator_host dictator_host;
+typedef struct dictator_target {
+    uint64_t token;
+    uintptr_t foreground;
+    uintptr_t focus;
+    uint64_t checked_at;
+    uint32_t process_id;
+    uint32_t eligible;
+} dictator_target;
+typedef struct dictator_input {
+    uint64_t timestamp;
+    uint64_t target;
+    uint32_t source; // Hotkey=1, microphone=2
+    uint32_t down;
+} dictator_input;
+// Additive Phase 2 metadata/input contract; UI thread only, caller-owned outputs.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_bind_hotkey(
+    dictator_host* host, uint32_t modifiers, uint32_t key, const uint16_t* display) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_target(
+    dictator_host* host, dictator_target* output) DICTATOR_NOEXCEPT;
+DICTATOR_API uint32_t DICTATOR_CALL dictator_host_input(
+    dictator_host* host, dictator_input* output) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_preview(
+    dictator_host* host, uint64_t target) DICTATOR_NOEXCEPT;
 DICTATOR_API dictator_result DICTATOR_CALL dictator_host_create(
     uint32_t requested_abi, dictator_host** out_host) DICTATOR_NOEXCEPT;
 DICTATOR_API void DICTATOR_CALL dictator_host_destroy(dictator_host* host) DICTATOR_NOEXCEPT;

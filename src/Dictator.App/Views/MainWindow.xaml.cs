@@ -50,8 +50,8 @@ public sealed partial class MainWindow : Window
             AppTheme.Light => ElementTheme.Light, AppTheme.Dark => ElementTheme.Dark, _ => ElementTheme.Default
         };
         Navigation.RequestedTheme = DiagnosticsRoot.RequestedTheme;
-        SettingsError.IsOpen = owner.SettingsError is not null;
-        SettingsError.Message = owner.SettingsError ?? "";
+        SettingsError.IsOpen = owner.SettingsError is not null || owner.HotkeyError is not null;
+        SettingsError.Message = owner.SettingsError ?? owner.HotkeyError ?? "";
         StartupSwitch.IsEnabled = owner.Store.Error is null;
         ThemeChoice.IsEnabled = owner.Store.Error is null;
         HotkeyBox.IsEnabled = owner.Store.Error is null;

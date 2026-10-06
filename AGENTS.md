@@ -3,7 +3,7 @@
 This is a fresh implementation of Dictator, not a reconstruction of the deleted
 C++ prototype. Read `docs/SPECIFICATION.md` and the requested phase. Later explicit
 requirements override generic framework conventions. Phase 0 passed Windows CI and
-the user accepted the staged artifact. Phase 1 is the current scope.
+the user accepted the staged artifact. The user accepted Phase 1. Phase 2 is the current scope.
 
 ## Platform and architecture
 
