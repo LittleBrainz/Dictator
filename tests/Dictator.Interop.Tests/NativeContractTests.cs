@@ -8,18 +8,41 @@ namespace Dictator.Interop.Tests;
 public sealed class NativeContractTests
 {
     [Fact]
-    public void Phase2MetadataLayoutsMatchTheNativeX64Contract()
+    public void MetadataLayoutsMatchTheNativeX64Contract()
     {
         Assert.Equal(48, Marshal.SizeOf<NativeTarget>());
         Assert.Equal(24, Marshal.SizeOf<NativeInput>());
         Assert.Equal(32, Marshal.OffsetOf<NativeTarget>(nameof(NativeTarget.ProcessId)).ToInt32());
         Assert.Equal(16, Marshal.OffsetOf<NativeInput>(nameof(NativeInput.Source)).ToInt32());
+        Assert.Equal(64, Marshal.SizeOf<NativeAudioSnapshot>());
+        Assert.Equal(1540, Marshal.SizeOf<NativeAudioDevice>());
+        Assert.Equal(32, Marshal.OffsetOf<NativeAudioSnapshot>(nameof(NativeAudioSnapshot.State)).ToInt32());
     }
     static NativeContractTests()
     {
         var root = Environment.GetEnvironmentVariable("DICTATOR_DISTRIBUTION_ROOT")
             ?? throw new InvalidOperationException("Set DICTATOR_DISTRIBUTION_ROOT to the staged artifact root.");
         NativeMethods.Initialize(root);
+    }
+
+    [Fact]
+    public async Task AudioConsumerAndCatalogJoinBeforeHostDestruction()
+    {
+        if (OperatingSystem.IsWindows()) await Task.Run(VerifyAudioLifetime);
+    }
+    private static void VerifyAudioLifetime()
+    {
+        // Synchronous ownership keeps host create/configure/destroy on one thread.
+        // Enumeration and chunk reads execute in production background tasks.
+        using var host = new ResidentHost();
+        host.ConfigureAudio("");
+        using var audio = new AudioBridge(host.AudioHandle);
+        var choices = audio.DevicesAsync().GetAwaiter().GetResult();
+        Assert.Equal("", choices[0].Id);
+        Assert.All(choices.Skip(1), item => Assert.InRange(item.Id.Length, 1, 511));
+        Assert.NotEqual(2u, audio.Snapshot.State); // Enumeration never starts capture.
+        host.ConfigureAudio("Dictator.Missing.Test.Microphone");
+        Assert.NotEqual(2u, audio.Snapshot.State);
     }
 
     [Fact]

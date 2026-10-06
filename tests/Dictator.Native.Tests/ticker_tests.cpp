@@ -19,19 +19,19 @@ int main() {
     // every visible glyph in the same position instead of restarting the message.
     CHECK(widget_design::hint_scroll_x(0, 100000) == 9);
     CHECK(widget_design::hint_scroll_x(300, 1200) == 9);
-    CHECK(std::abs(widget_design::hint_scroll_x(300, 2200) + 15) < .001f);
-    const auto before_wrap = widget_design::hint_scroll_x(300, 13690);
-    const auto after_wrap = widget_design::hint_scroll_x(300, 13710);
-    CHECK(std::abs((before_wrap + 300) - after_wrap - .48f) < .001f);
-    CHECK(std::abs(widget_design::hint_scroll_x(300, 26200) - 9) < .001f);
+    CHECK(std::abs(widget_design::hint_scroll_x(300, 2200) + 27) < .001f);
+    const auto before_wrap = widget_design::hint_scroll_x(300, 9523);
+    const auto after_wrap = widget_design::hint_scroll_x(300, 9543);
+    CHECK(std::abs((before_wrap + 300) - after_wrap - .72f) < .001f);
+    CHECK(std::abs(widget_design::hint_scroll_x(360, 11200) - 9) < .001f);
     widget_design::ticker_text ticker;
     CHECK(ticker.append(L"First ", 30, 1000));
     ticker.advance(1250);
-    CHECK(std::abs(ticker.x() - 190) < .001f);
+    CHECK(std::abs(ticker.x() - 182) < .001f);
     CHECK(ticker.append(L"second", 50, 1250));
-    CHECK(std::abs(ticker.x() - 190) < .001f); // New deltas never rewind existing text.
+    CHECK(std::abs(ticker.x() - 182) < .001f); // New deltas never rewind existing text.
     CHECK(ticker.characters() == 12 && ticker.segments().size() == 2);
-    ticker.advance(2250); CHECK(std::abs(ticker.x() - 126) < .001f);
+    ticker.advance(2250); CHECK(std::abs(ticker.x() - 86) < .001f);
     ticker.advance(9000); CHECK(ticker.segments().empty() && ticker.characters() == 0);
     const std::wstring large(2048, L'x');
     CHECK(ticker.append(large, 10000, 9000));
@@ -43,8 +43,8 @@ int main() {
     ticker.advance(40000); CHECK(ticker.characters() == 0);
     CHECK(ticker.append(L"Bonjour, 你好 — microphone 🎤", 120, 40000));
     CHECK(ticker.segments().front().text == L"Bonjour, 你好 — microphone 🎤");
-    ticker.advance(40016); CHECK(std::abs(ticker.x() - 204.976f) < .001f);
-    ticker.advance(40032); CHECK(std::abs(ticker.x() - 203.952f) < .001f);
+    ticker.advance(40016); CHECK(std::abs(ticker.x() - 204.464f) < .001f);
+    ticker.advance(40032); CHECK(std::abs(ticker.x() - 202.928f) < .001f);
     ticker.clear(40032); CHECK(ticker.x() == 206 && ticker.characters() == 0);
     std::cout << "Continuous right-to-left motion, append continuity, Unicode, pruning, bounded storage and reset passed.\n";
 }

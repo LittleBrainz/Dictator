@@ -71,6 +71,38 @@ DICTATOR_API dictator_result DICTATOR_CALL dictator_copy_text(
 // No managed callbacks. poll_events transfers a bitset: Widget=1, Settings=2,
 // Restart=4, Quit=8, Hotkey failure=16, Cancel preview=32. Native owns HWNDs, tray icon, menu and drawing resources.
 typedef struct dictator_host dictator_host;
+typedef struct dictator_audio dictator_audio;
+typedef struct dictator_audio_device {
+    uint16_t id[512];
+    uint16_t name[256];
+    uint32_t is_default;
+} dictator_audio_device;
+// Exactly 64 bytes. State: idle=0, starting=1, capturing=2, error=3.
+// Error: none=0, no device=1, permissions=2, device changed=3,
+// unsupported format=4, platform failure=5. Metadata only; no PCM in diagnostics.
+typedef struct dictator_audio_snapshot {
+    uint64_t session, device_revision, dropped_frames, captured_frames;
+    uint32_t state, error;
+    int32_t status;
+    uint32_t sample_rate, channels;
+    float peak, rms;
+    uint32_t buffered_frames;
+} dictator_audio_snapshot;
+// UI-thread configuration. Empty ID follows Windows' default capture endpoint.
+// Selecting a device cancels any current session. No capture until an eligible gesture.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_host_configure_audio(dictator_host* host, const uint16_t* device_id) DICTATOR_NOEXCEPT;
+// Borrowed audio service valid until host destruction. Caller must stop/join all
+// background consumers/catalog tasks before destroying the host.
+DICTATOR_API dictator_audio* DICTATOR_CALL dictator_host_audio_handle(dictator_host* host) DICTATOR_NOEXCEPT;
+// Non-real-time calls, any thread. Catalog enumeration never opens a microphone.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_devices(dictator_audio* audio, dictator_audio_device* devices,
+    uint32_t capacity, uint32_t* count) DICTATOR_NOEXCEPT;
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_status(dictator_audio* audio, dictator_audio_snapshot* snapshot) DICTATOR_NOEXCEPT;
+// Exactly one serialized non-real-time consumer. Normalized mono float samples
+// at the source sample rate. Max 8192 frames/call. Native and managed copies are
+// transient; consumed/stale native slots are zeroed. Drop-new overflow is counted.
+DICTATOR_API dictator_result DICTATOR_CALL dictator_audio_read(dictator_audio* audio, float* samples, uint32_t capacity,
+    uint32_t* count, uint64_t* session) DICTATOR_NOEXCEPT;
 typedef struct dictator_target {
     uint64_t token;
     uintptr_t foreground;

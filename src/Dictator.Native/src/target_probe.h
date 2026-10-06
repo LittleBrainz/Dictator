@@ -17,6 +17,8 @@ public:
     dictator_target snapshot() noexcept;
     bool pop(dictator_input& output) noexcept;
     void cancel_inputs() noexcept;
+    const std::atomic<uint64_t>* eligibility_guard() const noexcept { return &eligible_token_; }
+    const std::atomic<uint64_t>* freshness_guard() const noexcept { return &checked_at_; }
 private:
     void run() noexcept;
     HWND notification_{};
@@ -26,5 +28,7 @@ private:
     uint64_t epoch_{};
     std::deque<dictator_input> requests_, inputs_;
     dictator_target target_{};
+    std::atomic<uint64_t> checked_at_{};
+    std::atomic<uint64_t> eligible_token_{};
     std::thread worker_;
 };

@@ -1,12 +1,13 @@
-# Architecture through Phase 2
+# Architecture through Phase 3
 
 The v2 specification is in `SPECIFICATION.md`, updated with the user's explicit
 6 October 2026 deployment and user-data requirements.
 Phase 0 established the build and deployment chain and passed user acceptance.
 Phase 1 adds resident lifecycle, a native tray and Widget shell, Settings and
 preferences; the user accepted both phases. Phase 2 adds global input, cursor
-eligibility and simulated interaction. Audio capture, transcription, insertion,
-networking, history and credentials remain future work.
+eligibility and simulated interaction. Phase 3 adds native microphone capture
+and real levels. Transcription, insertion, networking, history and credentials
+remain future work.
 
 `Dictator.App` is an unpackaged C# 14/.NET 10 WinUI 3 executable. It creates
 **Dictator Settings** quietly and keeps the Widget and tray available until Quit.
@@ -119,7 +120,7 @@ under `%LOCALAPPDATA%\Programs\Dictator` may be added later for binaries only.
 API keys still belong in Windows Credential Manager.
 
 Preferences use schema 1 in `settings.json`: Start with Windows, Theme, Hotkey
-and Widget Zoom. Writes flush a unique temporary file before atomic replacement.
+and Widget Zoom, plus optional MicrophoneId (empty means follow Windows default). Writes flush a unique temporary file before atomic replacement.
 Invalid, inaccessible or future-schema files are preserved and lock preference
 changes for that session. Recovery requires repairing or moving the file and
 restarting. A fresh launch does not create a config until a preference changes.
@@ -256,9 +257,57 @@ deltas for the active target and presentation epoch (snapshotted at start),
 rejecting late text even when Talking restarts in the same field. It returns an error on inactive/stale targets or
 full queues, copies borrowed input, and retains at most 4096 code units in 128
 segments (2048 units per call). Off-screen segments are pruned. Appending preserves
-existing positions; motion is 64 DIP/s from right to left with white text, updated
+existing positions; motion is 96 DIP/s from right to left with white text, updated
 by the native 16 ms UI timer. Stop/focus loss/close/rebind clears the queue. Neither
 audio/provider operations nor transcript logging/persistence are introduced.
 Production Phase 2 supplies no text; only the owned test fixture exercises sample
 deltas. The user's "translated" label means speech-to-text in the spoken language,
 without subsequent formatting. Real transcription is still Phase 4.
+
+
+## Phase 3 microphone capture
+
+The native host owns an opaque `dictator_audio` service. Configuring it initializes
+an MTA worker and endpoint notifications, without opening a microphone. Speech
+settings enumerates active capture endpoints on a background managed task and
+persists either an endpoint ID or an empty string for Windows default (console
+role). An absent selected endpoint stays selected and fails safely; it never
+silently falls back. Enumeration/refresh does not start capture.
+
+A valid Talk gesture binds the target identity and requests shared-mode,
+event-driven WASAPI capture. The worker owns COM/audio objects and uses MMCSS Audio
+priority when available. Device sample rates from 8–192 kHz, up to 32 channels,
+PCM 8/16/24/32-bit and float32 are normalized/downmixed to mono float32 at the
+source rate. Resampling for a transcription provider belongs to the next phase.
+Silence, clipped/non-finite samples and unsupported formats have explicit handling.
+
+The normal packet path uses 1024-frame stack scratch, lock-free level/counter
+atomics and a fixed 131072-frame (~512 KiB) single-producer/single-consumer ring.
+At most eight packets are processed per event before control/shutdown is checked.
+It makes no managed callbacks and performs no UI, disk, network, logging,
+allocation or mutex acquisition. Overflow drops incoming frames and counts them;
+it cannot grow the ring or block capture. Metadata/catalog operations and stream
+setup/error cleanup run outside that packet path.
+
+A background managed consumer reuses one 4096-frame array, reads every 20 ms and
+clears/discards chunks. Consumed ring slots are zeroed before reuse. Session epochs
+invalidate pending old audio on stop/restart; idle reads purge stale slots. UI
+rendering samples coalesced RMS and retains a fixed 25-level history. The active
+waveform responds to real sound; silence and inactive states use a straight line.
+No sample text, provider, recorder, transcript persistence or audio files exist.
+
+Commands are bounded and asynchronous. Every 20 ms or packet wake the native
+worker independently checks foreground/focus HWND, the probe's eligible token
+and its 400 ms freshness limit. It stops capture on lost/changed eligibility even
+if managed dispatch is stalled. Widget close, gesture release/toggle, rebind,
+selection changes and Quit also stop capture. Endpoint notifications interrupt a
+removed selected device or a changed followed default and require another gesture;
+they do not transfer a live session to a new microphone. Native error metadata
+cancels Talking, shows a tray notice without activation and supplies Settings with
+a useful message. The managed consumer and catalog task join before native host
+and worker destruction; the probe outlives the worker's borrowed atomic guards.
+
+The inactive red microphone has no diagonal slash and a stronger red glow. Live
+text and long hint motion are 96 and 36 DIP/s respectively, 1.5 times v0.2.6.
+The accepted geometry, conditional strip, bright-blue 12 DIP hints, transparent
+1 DIP gap, waveform-only dragging and full-height work-area bounds remain.

@@ -1,4 +1,4 @@
-# Verification through Phase 2
+# Verification through Phase 3
 
 Phase 0 passed Windows CI and the user accepted the revised app-local artifact.
 Phase 1 adds the following automated and manual lifecycle checks.
@@ -41,13 +41,13 @@ Core tests also check malformed/unsupported settings, reserved Hotkeys, defaults
 atomic replacement and no temporary-file residue. ABI tests cover error codes,
 10,000 ownership cycles, Unicode/embedded NUL, and cross-thread consumer polling.
 
-The `Phase2-test-results` artifact contains TRX and JSON evidence. The `Dictator v<version>`
+The `Phase3-test-results` artifact contains TRX and JSON evidence. The `Dictator v<version>`
 artifact contains the application tree only, without a nested ZIP. CI checks do
 not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.2.6** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.3.0** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -88,7 +88,8 @@ not replace manual acceptance on the user's Windows desktop.
 
 Core and portable native/interop tests run on Linux with the pinned .NET SDK and
 C++23 compiler. They are contract coverage, never a substitute for Windows package
-validation. No microphone or live provider session is used in normal CI.
+validation. Hosted package checks attempt real capture and verify the explicit error path
+when no microphone is available. No live transcription provider is used.
 
 ## Phase 2 automated interaction coverage
 
@@ -121,23 +122,23 @@ and actual per-pixel desktop compositing. A window-procedure observer records ev
 position against all four screen edges at every zoom stop, requiring one bounded
 move per update instead of an out-of-bounds move followed by correction. The user's Windows desktop acceptance confirmed Phase 2
 before this visual refinement; repeat appearance and taskbar placement below for
-v0.2.6, including an auto-hidden taskbar and secondary monitors.
+v0.3.0, including an auto-hidden taskbar and secondary monitors.
 
 ## Phase 2 manual Windows 11 acceptance
 
 1. On fresh startup check the controls capsule and hidden upper strip, with a real desktop-visible gap when revealed,
    left microphone, top text strip and right Settings/Close buttons. The inactive microphone is
-   red and slashed. With a valid cursor the waveform is a cyan straight line;
+   red with stronger glow and no slash. With a valid cursor the waveform is a cyan straight line;
    without one it is a red straight line. Check additional clearance above the
    taskbar, including auto-hide. Focus Notepad and a browser text field. Tap the default Hotkey: green microphone
-   and simulated waveform start on press and remain active after a short release.
+   and real waveform start on press and remain active after a short release.
    Tap again: stop on release, retaining focus and leaving text/selection unchanged.
 2. From off, hold at least 500 ms: active while held, stop on release. Repeat using
    microphone click/click-hold. Test repeat and modifier release in different orders.
    Combine keyboard and mouse; one source must not finish the other's gesture.
 3. Move focus to a button, read-only field, disabled field or unrecognized custom
-   control: red/slashed microphone, no animation, no start. Lose eligibility or
-   switch between eligible fields while active: preview stops. Exercise browser
+   control: red microphone, no animation, no start. Lose eligibility or
+   switch between eligible fields while active: capture stops. Exercise browser
    contenteditable and custom controls explicitly; they are not covered by the
    native Win32 fixture. Capture no target text in diagnostic evidence.
 4. Close while active: cancel and dismiss only the Widget. Reopen from tray and
@@ -165,9 +166,53 @@ v0.2.6, including an auto-hidden taskbar and secondary monitors.
 8. Rebind a free combination and a combination already registered by another app.
    Confirm conflicts are shown and the previous Hotkey/preferences survive. Test
    both UK and US layouts, including changing layouts while Dictator is resident.
-9. Confirm Settings explains the simulated preview. No microphone permission,
-   provider connection, inserted text, audio/history files or transcript logs
+9. Confirm Speech settings explains real capture and the next transcription phase.
+   No provider connection, inserted text, audio/history files or transcript logs
    should appear. Record Windows build, run/commit and any unsupported controls.
 
 Hosted tests do not establish browser/custom-control or physical mixed-DPI
 acceptance; these checks must be completed on a Windows desktop.
+
+
+## Phase 3 automated and manual microphone checks
+
+Portable audio tests exercise float/PCM normalization, non-finite/clipped input,
+stereo downmix, ring overflow/drop-new behavior, stale-session discard and
+one-million-frame concurrent ordering. Windows native tests check ABI sizes,
+argument/thread validation and repeated service/catalog lifetimes. Managed interop
+tests run the production background catalog and consumer against the staged DLL,
+joining both before host destruction. Core checks persist explicit microphone IDs,
+old-file default tracking and invalid-ID rejection without overwriting settings.
+
+The extracted package test attempts real WASAPI start. With an endpoint it checks
+frame delivery, bounded buffering, tap/hold and eligibility stop. Without usable
+hardware it requires a classified capture error, inactive state and unchanged
+focus. In both cases it persists a deliberately absent microphone, verifies failure
+without fallback, restores default selection and checks no-cursor recovery/Quit.
+Hosted runners cannot establish physical microphone/device-change acceptance.
+
+On the user's Windows 11 desktop, additionally:
+
+1. In Speech settings refresh the list; select Windows default, then a specific
+   microphone. Restart and confirm the selection persists. Enumeration and opening
+   Settings must leave the microphone off.
+2. Focus an editable field and start Talking with the Hotkey and microphone button.
+   Speak/stop speaking: confirm real varying levels and a straight line in silence,
+   preserved typing focus, prompt tap/hold stop and unchanged text. No transcription
+   should be shown yet. Check the brighter unslashed red mic and faster hover loop.
+3. While Talking change focus, make the target read-only, close the Widget, rebind,
+   Restart and Quit. Confirm capture stops and no host remains after Quit. Repeat
+   start/stop and a long Talk session; Diagnostics frame counters may rise, but
+   audio storage must remain bounded and no recordings appear in `~/.dictator`.
+4. With Windows default selected, change the Windows default recording device while
+   Talking. Capture must stop with a useful notice; another gesture uses the new
+   default. With an explicit device selected, an unrelated default change must not
+   switch it. Disconnect/disable the selected device: capture stops safely, its
+   missing selection remains visible, and restarting Talk fails until reconnected
+   or another device is selected. Reconnect/refresh and verify recovery.
+5. Disable desktop-app microphone access in Windows privacy settings and start Talk.
+   Check the permission error and inactive mic; restore access and verify recovery.
+   Check missing-device and unsupported-format errors where the hardware permits.
+6. Drag/change zoom/hover controls throughout capture. Check responsiveness,
+   taskbar/work-area bounds and no activation except explicitly opening Settings.
+   Record the hardware, Windows build, run/commit and results without audio content.

@@ -3,8 +3,8 @@
 This is a fresh implementation of Dictator, not a reconstruction of the deleted
 C++ prototype. Read `docs/SPECIFICATION.md` and the requested phase. Later explicit
 requirements override generic framework conventions. Phase 0 passed Windows CI and
-the user accepted the staged artifact. The user accepted Phases 1 and 2. The current scope is the user-requested Widget
-design refinement before Phase 3. Keep the two glossy blue capsules (216 x 62
+the user accepted the staged artifact. The user accepted Phases 1 and 2. The current scope is Phase 3: native event-driven shared-mode WASAPI capture,
+microphone selection/default tracking, bounded transient audio and real levels. Keep the two glossy blue capsules (216 x 62
 DIP) with unchanged button sizes and a real 1 DIP desktop-visible, click-through gap.
 Keep the full height reserved for drag clamping even while the upper strip is hidden.
 Only the waveform initiates dragging. The upper strip
@@ -13,9 +13,9 @@ hover information is very bright blue, using a 12 DIP font. The entire upper
 capsule fades in over 180 ms with its text already present (after one second
 of hover), or immediately when Talking begins. Hide it when neither is active.
 Use a spaced "..." between repeats of long hints. No separate tooltip window. Raw text means speech-to-text in the spoken language, before formatting.
-Keep the left microphone, right Settings/Close controls, red/slashed inactive
-microphone, cyan quiet line with an eligible cursor, and red quiet line without
-one. Phase 2 has no real transcription; the live-text bridge accepts future
+Keep the left microphone, right Settings/Close controls, red inactive
+microphone with strengthened glow and no diagonal slash, cyan quiet line with an eligible cursor, and red quiet line without
+one. Phase 3 has no real transcription; the live-text bridge accepts future
 provider deltas, and normal operation never injects sample text.
 
 ## Platform and architecture

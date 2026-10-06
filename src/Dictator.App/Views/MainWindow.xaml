@@ -40,8 +40,15 @@
                   ValueChanged="OnZoomChanged" MaxWidth="400" HorizontalAlignment="Stretch"
                   AutomationProperties.Name="Widget Zoom" />
           <TextBlock Text="Choose one of five sizes. The middle stop is the default." TextWrapping="Wrap" />
-          <TextBlock Text="The waveform is a simulated preview. Audio capture and transcription will be added in later phases." TextWrapping="Wrap" />
+          <TextBlock Text="The waveform shows microphone activity while Talking. Speech-to-text will be added in the next phase." TextWrapping="Wrap" />
           <Button Content="Open Widget" Click="OnOpenWidget" />
+        </StackPanel>
+        <StackPanel x:Name="SpeechPage" Visibility="Collapsed" Spacing="12">
+          <ComboBox x:Name="MicrophonePicker" Header="Microphone" MinWidth="360"
+                    SelectionChanged="OnMicrophoneChanged" />
+          <Button Content="Refresh microphones" Click="OnRefreshMicrophones" />
+          <TextBlock Text="Windows default follows your current default input device. Choosing a specific microphone keeps that selection, including when it is disconnected." TextWrapping="Wrap" />
+          <TextBlock Text="Audio is captured only while Talking and is discarded from memory. No recordings are saved. Speech-to-text is coming in the next phase." TextWrapping="Wrap" />
         </StackPanel>
         <StackPanel x:Name="DiagnosticsPage" Visibility="Collapsed" Spacing="12">
           <Button Content="Copy" Click="OnCopyDiagnostics" />

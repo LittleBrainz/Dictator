@@ -1,6 +1,6 @@
-Dictator - Phase 2 interaction preview
+Dictator - Phase 3 microphone capture
 
-Download Dictator v0.2.6.zip and extract the complete artifact once, then double-click Dictator.exe.
+Download Dictator v0.3.0.zip and extract the complete artifact once, then double-click Dictator.exe.
 Windows 11 x64 is required. No separate .NET, Windows App SDK, or development
 tools are needed. Dictator.exe is a small launcher; the application and runtimes
 are unpacked under lib/WinUI. Startup does not extract them into Temp.
@@ -17,14 +17,20 @@ General provides Start with Windows, Theme and a configurable global Hotkey.
 Focus an editable text field and press Ctrl+Alt+backslash, or the microphone.
 Release before 500 ms to leave Talking on; hold at least 500 ms to stop on
 release. If already Talking, pressing and releasing stops it. Losing the
-eligible cursor stops the preview. Escape continues to the focused application.
-The waveform is SIMULATED: no microphone, transcription or text insertion yet.
+eligible cursor stops capture. Escape continues to the focused application.
+Speech settings selects the Windows default microphone or a specific microphone.
+The waveform shows real microphone levels; silence remains a straight line.
+Microphone changes/disconnection stop Talking and show an actionable error.
+Audio is consumed and discarded from bounded memory; no recordings are saved.
+Transcription and text insertion are not implemented yet.
+The inactive red microphone has a stronger glow and no diagonal slash.
 
 Hold the waveform body to drag. Position survives close/reopen in this process
 and resets on startup or Restart. Widget has five zoom stops and tooltips after
 a one-second hover. The whole upper capsule fades in with very bright blue
 12 DIP hover instructions already displayed. It is hidden when neither Talking
 nor showing a hint. Long hints repeat continuously with "..." between messages.
+Ticker and tooltip scrolling are 1.5 times faster than v0.2.6.
 Only the waveform starts a drag; the full window height remains reserved for
 screen bounds. The Widget is 216 DIP wide with unchanged button sizes. No separate
 tooltip window appears. The gap between the capsules is transparent

@@ -1,4 +1,5 @@
 using Dictator.Core;
+using Dictator.App.NativeInterop;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -47,12 +48,16 @@ public sealed partial class MainWindow : Window
         ThemeChoice.SelectedIndex = (int)owner.Preferences.Theme;
         HotkeyBox.Text = owner.Preferences.Hotkey.Display;
         ZoomChoice.Value = Array.IndexOf(Preferences.ZoomFactors, owner.Preferences.WidgetZoom);
+        MicrophonePicker.ItemsSource = owner.Microphones;
+        MicrophonePicker.SelectedItem = owner.Microphones.FirstOrDefault(x => x.Id == owner.Preferences.MicrophoneId);
+        MicrophonePicker.IsEnabled = owner.Store.Error is null;
         DiagnosticsRoot.RequestedTheme = owner.Preferences.Theme switch {
             AppTheme.Light => ElementTheme.Light, AppTheme.Dark => ElementTheme.Dark, _ => ElementTheme.Default
         };
         Navigation.RequestedTheme = DiagnosticsRoot.RequestedTheme;
-        SettingsError.IsOpen = owner.SettingsError is not null || owner.HotkeyError is not null;
-        SettingsError.Message = owner.SettingsError ?? owner.HotkeyError ?? "";
+        SettingsError.IsOpen = owner.SettingsError is not null || owner.HotkeyError is not null || owner.AudioError is not null;
+        SettingsError.Message = owner.SettingsError ?? owner.HotkeyError ?? owner.AudioError ?? "";
+        SettingsError.Title = owner.SettingsError is null && owner.HotkeyError is null && owner.AudioError is not null ? "Microphone needs attention" : "Settings need attention";
         StartupSwitch.IsEnabled = owner.Store.Error is null;
         ThemeChoice.IsEnabled = owner.Store.Error is null;
         HotkeyBox.IsEnabled = owner.Store.Error is null;
@@ -67,8 +72,10 @@ public sealed partial class MainWindow : Window
         PageTitle.Text = page;
         GeneralPage.Visibility = page == "General" ? Visibility.Visible : Visibility.Collapsed;
         WidgetPage.Visibility = page == "Widget" ? Visibility.Visible : Visibility.Collapsed;
+        SpeechPage.Visibility = page == "Speech" ? Visibility.Visible : Visibility.Collapsed;
         DiagnosticsPage.Visibility = page == "Diagnostics" ? Visibility.Visible : Visibility.Collapsed;
-        FuturePage.Visibility = page is "General" or "Widget" or "Diagnostics" ? Visibility.Collapsed : Visibility.Visible;
+        FuturePage.Visibility = page is "General" or "Widget" or "Speech" or "Diagnostics" ? Visibility.Collapsed : Visibility.Visible;
+        if (page == "Speech") _ = owner.RefreshMicrophonesAsync();
         if (page == "Diagnostics") IdentityText.Text = owner.DiagnosticsText;
     }
     private void OnStartupChanged(object sender, RoutedEventArgs args)
@@ -98,6 +105,12 @@ public sealed partial class MainWindow : Window
     }
     private void OnResetHotkey(object sender, RoutedEventArgs args) => owner.Save(owner.Preferences with { Hotkey = new() });
     private void OnOpenWidget(object sender, RoutedEventArgs args) => owner.OpenWidget();
+    private void OnMicrophoneChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!updating && MicrophonePicker.SelectedItem is MicrophoneChoice choice)
+            owner.Save(owner.Preferences with { MicrophoneId = choice.Id });
+    }
+    private async void OnRefreshMicrophones(object sender, RoutedEventArgs args) => await owner.RefreshMicrophonesAsync();
     private void OnCopyDiagnostics(object sender, RoutedEventArgs args)
     {
         var content = new DataPackage();

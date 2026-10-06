@@ -13,6 +13,7 @@ public sealed class PreferencesTests : IDisposable
         var value = store.Load();
         Assert.Equal("Ctrl+Alt+\\", value.Hotkey.Display);
         Assert.Equal(1.000, value.WidgetZoom);
+        Assert.Equal("", value.MicrophoneId);
         Assert.False(Directory.Exists(directory));
     }
     [Fact]
@@ -31,12 +32,21 @@ public sealed class PreferencesTests : IDisposable
     public void AllPreferencesRoundTripWithNoTemporaryFiles()
     {
         var store = new PreferencesStore(directory);
-        var value = new Preferences { Theme = AppTheme.Dark, StartWithWindows = true, WidgetZoom = 1.333, Hotkey = new(6, 0x77) };
+        var value = new Preferences { Theme = AppTheme.Dark, StartWithWindows = true, WidgetZoom = 1.333, Hotkey = new(6, 0x77), MicrophoneId = "{stable-device-id}" };
         store.Save(value);
         Assert.Equal(value, new PreferencesStore(directory).Load());
         Assert.Single(Directory.GetFiles(directory));
         store.Save(value with { Theme = AppTheme.Light });
         Assert.Equal(AppTheme.Light, store.Load().Theme);
+    }
+    [Fact]
+    public void InvalidMicrophoneIdentityCannotReplacePreferences()
+    {
+        var store = new PreferencesStore(directory); store.Save(new());
+        var before = File.ReadAllText(store.FilePath);
+        Assert.Throws<InvalidDataException>(() => store.Save(new() { MicrophoneId = "bad\0identity" }));
+        Assert.Throws<InvalidDataException>(() => store.Save(new() { MicrophoneId = new string('x', 512) }));
+        Assert.Equal(before, File.ReadAllText(store.FilePath));
     }
     [Theory]
     [InlineData("{broken")]
