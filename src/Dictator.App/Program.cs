@@ -45,7 +45,7 @@ internal static partial class Program
                     return await resident.DispatchAsync(command).ConfigureAwait(false);
                 });
                 WinRT.ComWrappersSupport.InitializeComWrappers();
-                if (options.TestLocale is not null) Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = options.TestLocale;
+                if (options.TestLocale is not null) Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = options.TestLocale;
                 try
                 {
                     Application.Start(initialization =>

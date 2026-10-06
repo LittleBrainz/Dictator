@@ -82,7 +82,10 @@ try {
         $localeReport = Join-Path $sandbox "locale-$locale.json"
         $probe = Start-Process "$extracted/Dictator.exe" -ArgumentList @('--locale-smoke-test', $locale, "`"$localeReport`"") -PassThru
         if (-not $probe.WaitForExit(30000)) { $probe.Kill($true); throw "Locale $locale timed out." }
-        if ($probe.ExitCode -ne 0 -or -not (Test-Path $localeReport)) { throw "WinUI locale $locale failed." }
+        if ($probe.ExitCode -ne 0 -or -not (Test-Path $localeReport)) {
+            $detail = if (Test-Path $localeReport) { Get-Content $localeReport -Raw } else { 'No locale report.' }
+            throw "WinUI locale $locale failed: $detail"
+        }
         $localeReady = Get-Content $localeReport -Raw | ConvertFrom-Json
         if ($localeReady.status -ne 'ok' -or -not $localeReady.uiReady) { throw "WinUI locale $locale did not load." }
     }
