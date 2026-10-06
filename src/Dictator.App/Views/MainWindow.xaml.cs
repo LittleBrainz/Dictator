@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window
         this.owner = owner;
         InitializeComponent();
         Title = "Dictator Settings";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Dictator.ico"));
         AppWindow.Resize(new SizeInt32(960, 740));
         AppWindow.Closing += (_, args) => { if (!owner.IsProbe && !owner.IsStopping) { args.Cancel = true; AppWindow.Hide(); } };
         Navigation.SelectedItem = Navigation.MenuItems[0];

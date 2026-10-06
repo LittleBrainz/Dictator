@@ -25,7 +25,7 @@ Get-ChildItem $runtime -Directory -Recurse | Sort-Object { $_.FullName.Length } 
         Remove-Item $_.FullName -Recurse -Force
     }
 }
-foreach ($dependency in @('Dictator.App.exe', 'Dictator.App.runtimeconfig.json', 'System.Private.CoreLib.dll', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
+foreach ($dependency in @('Dictator.App.exe', 'Dictator.App.runtimeconfig.json', 'Assets/Dictator.ico', 'System.Private.CoreLib.dll', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'Microsoft.UI.pri', 'Microsoft.UI.Xaml.Controls.pri', 'Microsoft.WindowsAppRuntime.pri', 'vcruntime140.dll', 'msvcp140.dll')) {
     if (-not (Test-Path (Join-Path $runtime $dependency))) { throw "Required app-local runtime file is missing: $dependency" }
 }
 if (-not (Test-Path "$runtime/Dictator.App.pri") -and -not (Test-Path "$runtime/resources.pri")) {
@@ -45,7 +45,7 @@ $commit = & git -C $repo rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot record the Git commit.' }
 $build = if ($env:GITHUB_RUN_NUMBER) { "$env:GITHUB_RUN_NUMBER.$env:GITHUB_RUN_ATTEMPT" } else { 'local' }
 $metadata = [ordered]@{
-    productVersion = '0.1.0'
+    productVersion = ([xml](Get-Content "$repo/Directory.Build.props" -Raw)).Project.PropertyGroup.Version
     gitCommit = $commit.Trim()
     ciBuildNumber = $build
     configuration = 'Release'

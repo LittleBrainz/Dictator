@@ -41,16 +41,17 @@ Core tests also check malformed/unsupported settings, reserved Hotkeys, defaults
 atomic replacement and no temporary-file residue. ABI tests cover error codes,
 10,000 ownership cycles, Unicode/embedded NUL, and cross-thread consumer polling.
 
-The `Phase1-test-results` artifact contains TRX and JSON evidence. The `Dictator`
+The `Phase1-test-results` artifact contains TRX and JSON evidence. The `Dictator v<version>`
 artifact contains the application tree only, without a nested ZIP. CI checks do
 not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.1.0** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
-   appear; Settings must remain hidden. Left-click the icon to show the Widget.
+   appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
+   the tray and the Settings title bar/taskbar. Left-click the icon to show the Widget.
 3. Check the right-click menu exactly: **Open Widget** (default), **Open Settings**,
    separator, **Restart Dictator**, **Quit**. Check the Widget gear opens Settings
    and its close control only dismisses the Widget.

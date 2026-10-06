@@ -1,0 +1,2 @@
+// One shared multi-resolution microphone icon for Explorer, the host and tray.
+101 ICON "@PROJECT_SOURCE_DIR@/assets/Dictator.ico"

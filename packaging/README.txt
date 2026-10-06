@@ -1,10 +1,11 @@
 Dictator - Phase 1 personal build
 
-Extract the complete Dictator artifact once, then double-click Dictator.exe.
+Download Dictator v0.1.0.zip and extract the complete artifact once, then double-click Dictator.exe.
 Windows 11 x64 is required. No separate .NET, Windows App SDK, or development
 tools are needed. Dictator.exe is a small launcher; the application and runtimes
 are unpacked under lib/WinUI. Startup does not extract them into Temp.
-Keep the complete lib folder next to Dictator.exe.
+Keep the complete lib folder next to Dictator.exe. The application and tray
+use the same stylized microphone icon.
 
 Startup shows a small idle Widget and the Dictator notification-area icon.
 Left-click the tray icon to reopen the Widget. Right-click it for Open Widget,

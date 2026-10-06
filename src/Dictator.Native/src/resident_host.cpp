@@ -22,33 +22,13 @@ constexpr wchar_t widget_class[] = L"Dictator.Widget.1";
 bool correct_thread(dictator_host* h) noexcept { return h && h->thread == GetCurrentThreadId(); }
 
 HICON make_icon() noexcept {
-    auto dc = GetDC(nullptr);
-    auto color = CreateCompatibleBitmap(dc, 32, 32);
-    auto mask = CreateBitmap(32, 32, 1, 1, nullptr);
-    auto canvas = CreateCompatibleDC(dc);
-    auto previous = SelectObject(canvas, color);
-    RECT r{0, 0, 32, 32};
-    auto brush = CreateSolidBrush(RGB(42, 85, 145));
-    FillRect(canvas, &r, brush);
-    DeleteObject(brush);
-    auto font = CreateFontW(-26, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-    auto old_font = SelectObject(canvas, font);
-    SetBkMode(canvas, TRANSPARENT);
-    SetTextColor(canvas, RGB(255, 255, 255));
-    DrawTextW(canvas, L"D", 1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(canvas, old_font);
-    DeleteObject(font);
-    SelectObject(canvas, mask);
-    PatBlt(canvas, 0, 0, 32, 32, BLACKNESS);
-    SelectObject(canvas, previous);
-    DeleteDC(canvas);
-    ReleaseDC(nullptr, dc);
-    ICONINFO info{TRUE, 0, 0, mask, color};
-    auto icon = CreateIconIndirect(&info);
-    DeleteObject(mask);
-    DeleteObject(color);
-    return icon;
+    // Resolve this DLL from its own static data address, independently of the
+    // executable, cwd and install path. LoadImage returns our owned HICON.
+    HMODULE module{};
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, owner_class, &module)) return nullptr;
+    return static_cast<HICON>(LoadImageW(module, MAKEINTRESOURCEW(101), IMAGE_ICON,
+        32, 32, LR_DEFAULTCOLOR));
 }
 
 void add_tray(dictator_host* h) noexcept {

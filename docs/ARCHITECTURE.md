@@ -164,3 +164,17 @@ scratch data root and a separate startup registry value, restores that value, an
 never writes the runner's real .dictator settings. Product launches always resolve
 the known profile path. Internal pipe commands for testing are accepted only by
 a resident instance launched with that test flag.
+
+## Icon and artifact identity
+
+`assets/Dictator.png` is the source microphone artwork. `assets/Dictator.ico`
+contains 16, 24, 32, 48, 64, 128 and 256 pixel variants of that same image. The
+launcher and native DLL embed the ICO through a shared resource template; the
+managed host embeds it through ApplicationIcon. Settings uses the published
+`Assets/Dictator.ico` via AppWindow.SetIcon. The native tray loads its owned icon
+from the DLL resource and releases it with DestroyIcon.
+
+The Actions artifact is `Dictator v<version>`, so its downloaded ZIP includes the
+version. The name comes from staged build-info.json, whose product version comes
+from Directory.Build.props. The application root still contains only Dictator.exe,
+README.txt and lib. Hotkey storage remains Phase 1; global interaction is Phase 2.
