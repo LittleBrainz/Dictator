@@ -32,6 +32,7 @@ struct dictator_host {
     float hint_width{};
     float hint_period{};
     widget_design::ticker_text ticker;
+    widget_design::caption_visibility caption;
     dictator_target current{};
     wchar_t hotkey[128]{L"Ctrl-Alt-\\"};
     std::unique_ptr<target_probe> probe;
@@ -49,10 +50,19 @@ uint64_t mouse_timestamp() noexcept {
     const auto now = GetTickCount64();
     return now - static_cast<DWORD>(static_cast<DWORD>(now) - static_cast<DWORD>(GetMessageTime()));
 }
+void update_caption(dictator_host* h) noexcept {
+    if (!h->caption.set_visible(h->talking || h->hint[0], GetTickCount64())) return;
+    RECT r{}; GetClientRect(h->widget, &r);
+    auto region = widget_design::window_region(r.right, r.bottom, h->caption.visible());
+    if (region && !SetWindowRgn(h->widget, region, TRUE)) DeleteObject(region);
+    InvalidateRect(h->widget, nullptr, FALSE);
+}
 void hide_tooltip(dictator_host* h) noexcept {
-    if (!h->hint[0]) return;
-    h->hint[0] = 0; h->hint_width = 0; h->hint_period = 0;
-    SetWindowTextW(h->widget, L"Dictator Widget"); InvalidateRect(h->widget, nullptr, FALSE);
+    if (h->hint[0]) {
+        h->hint[0] = 0; h->hint_width = 0; h->hint_period = 0;
+        SetWindowTextW(h->widget, L"Dictator Widget"); InvalidateRect(h->widget, nullptr, FALSE);
+    }
+    update_caption(h);
 }
 void close_widget(dictator_host* h) noexcept {
     h->talking = false; h->target = 0; h->hover = -1; h->dragging = false; h->pressed_region = -1;
@@ -115,7 +125,7 @@ void place_widget(dictator_host* h, bool show, const POINT* drag_position = null
         x = std::clamp(x, static_cast<int>(work.left), static_cast<int>(work.right - width));
         y = std::clamp(y, static_cast<int>(work.top), static_cast<int>(work.bottom - height));
         SetWindowPos(h->widget, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | (show ? SWP_SHOWWINDOW : 0));
-        auto region = widget_design::window_region(width, height);
+        auto region = widget_design::window_region(width, height, h->caption.visible());
         if (region && !SetWindowRgn(h->widget, region, TRUE)) DeleteObject(region);
         h->positioned = true;
         InvalidateRect(h->widget, nullptr, FALSE);
@@ -155,8 +165,9 @@ void show_tooltip(dictator_host* h) noexcept {
     if (wcscmp(content, h->hint) == 0) return;
     wcscpy_s(h->hint, content); h->hint_at = GetTickCount64();
     h->hint_width = widget_design::measure_text(h->hint, static_cast<int>(wcslen(h->hint)));
-    h->hint_period = h->hint_width > 252 ? h->hint_width +
-        widget_design::measure_text(widget_design::hint_separator, -1) : 0;
+    h->hint_period = h->hint_width > widget_design::text_width ? h->hint_width +
+        widget_design::measure_text(widget_design::hint_repeat_separator, -1) : 0;
+    update_caption(h);
     // Expose hover instructions to accessibility clients, never live transcript text.
     SetWindowTextW(h->widget, h->hint); InvalidateRect(h->widget, nullptr, FALSE);
 }
@@ -244,8 +255,8 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
     if (message == WM_HOTKEY) return 0; // Reservation/conflict detection; hook supplies both edges.
     if (message == WM_TIMER && h->probe) {
         refresh_target(h); show_tooltip(h);
-        if (h->hint[0] && IsWindowVisible(h->widget) &&
-            (GetTickCount64() - h->hover_at < 1240 || h->hint_width > 252))
+        if (IsWindowVisible(h->widget) &&
+            (h->caption.animating(GetTickCount64()) || h->hint_period > 0))
             InvalidateRect(h->widget, nullptr, FALSE);
         const auto key = resolved_key(h);
         if (h->registered_key && !h->key_down && key != h->registered_key) {
@@ -280,15 +291,14 @@ LRESULT CALLBACK owner_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexc
 void draw_widget(dictator_host* h, HWND hwnd, HDC destination) noexcept {
     RECT rect{}; GetClientRect(hwnd, &rect);
     const auto now = GetTickCount64(); h->ticker.advance(now);
-    const auto elapsed = now - h->hover_at;
-    const float alpha = widget_design::hover_opacity(elapsed);
+    const float alpha = h->caption.opacity(now);
     const float hint_x = widget_design::hint_scroll_x(h->hint_period, now - h->hint_at);
-    widget_design::paint(destination, rect.right, rect.bottom, h->talking, h->current.eligible != 0,
+    widget_design::paint(hwnd, destination, rect.right, rect.bottom, h->talking, h->current.eligible != 0,
         h->hover, h->pressed_region, now, h->ticker, h->hint, alpha, hint_x, h->hint_width, h->hint_period);
 }
 void paint_widget(dictator_host* h, HWND hwnd) noexcept {
-    PAINTSTRUCT paint{}; auto surface = BeginPaint(hwnd, &paint);
-    draw_widget(h, hwnd, surface); EndPaint(hwnd, &paint);
+    PAINTSTRUCT paint{}; BeginPaint(hwnd, &paint); EndPaint(hwnd, &paint);
+    draw_widget(h, hwnd, nullptr);
 }
 LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noexcept {
     auto* h = reinterpret_cast<dictator_host*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
@@ -311,6 +321,7 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
             h->dragged = true; place_widget(h, true, &requested); hide_tooltip(h); return 0;
         }
         const int region = hit_region(hwnd, lp);
+        if (region == 4) return 0; // Reading the caption never starts a new hint or drag.
         if (region != h->hover) {
             h->hover = region; h->hover_at = GetTickCount64(); hide_tooltip(h);
             InvalidateRect(hwnd, nullptr, FALSE);
@@ -319,7 +330,9 @@ LRESULT CALLBACK widget_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) noex
     }
     case WM_MOUSELEAVE: h->hover = -1; hide_tooltip(h); InvalidateRect(hwnd, nullptr, FALSE); return 0;
     case WM_LBUTTONDOWN: {
-        h->pressed_region = hit_region(hwnd, lp); hide_tooltip(h); SetCapture(hwnd);
+        const auto region = hit_region(hwnd, lp);
+        if (region < 0 || region > 3) return 0;
+        h->pressed_region = region; hide_tooltip(h); SetCapture(hwnd);
         InvalidateRect(hwnd, nullptr, FALSE);
         if (h->pressed_region == 0) {
             h->dragging = true; GetCursorPos(&h->drag_origin);
@@ -365,7 +378,7 @@ dictator_result DICTATOR_CALL dictator_host_create(uint32_t abi, dictator_host**
         (!RegisterClassW(&widget) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)) { Gdiplus::GdiplusShutdown(h->graphics_token); delete h; return DICTATOR_PLATFORM_ERROR; }
     h->owner = CreateWindowExW(WS_EX_TOOLWINDOW, owner_class, L"Dictator Resident", WS_POPUP,
         0, 0, 0, 0, nullptr, nullptr, instance, h);
-    h->widget = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+    h->widget = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_LAYERED,
         widget_class, L"Dictator Widget", WS_POPUP, 0, 0, widget_design::width, widget_design::height, h->owner, nullptr, instance, h);
     h->icon = make_icon();
     if (h->owner && h->widget && h->icon) add_tray(h);

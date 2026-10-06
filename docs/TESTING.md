@@ -47,7 +47,7 @@ not replace manual acceptance on the user's Windows desktop.
 
 ## Manual Windows 11 x64 lifecycle acceptance
 
-1. Download **Dictator v0.2.5** from the passing run and extract once to a path with spaces.
+1. Download **Dictator v0.2.6** from the passing run and extract once to a path with spaces.
    Keep `lib` beside the root launcher. Use no separately installed runtimes.
 2. Launch `Dictator.exe`. Confirm only the idle Widget and notification-area icon
    appear; Settings must remain hidden. Confirm the microphone icon in Explorer,
@@ -111,19 +111,21 @@ the lifecycle evidence. The fixture executable is not shipped to users.
 
 The native interaction test captures the actual HWND paint path in ready, Talking
 and no-cursor states, plus inline hints and a fixture-fed ticker, under `artifacts/test-results/widget`. It checks cyan/red
-quiet-line pixels with no vertical bars, taskbar clearance, yellow/white text pixels, transparent-region/input-hole checks, left microphone input
+quiet-line pixels with no vertical bars, taskbar clearance, bright-blue/white text pixels, transparent-region/input-hole checks, left microphone input
 and right Settings/Close hit regions, in addition to existing focus/drag/zoom and
 ownership regressions. The ticker contract test verifies elapsed-time motion,
 append continuity, Unicode, bounded character/segment storage, pruning, reset
-and the 1000 ms delay/240 ms fade curve. A window-procedure observer records every applied drag
+and the 180 ms whole-caption fade curve. Native checks cover the 1000 ms hover delay,
+hidden/visible input regions, fixed full drag bounds, waveform-only dragging,
+and actual per-pixel desktop compositing. A window-procedure observer records every applied drag
 position against all four screen edges at every zoom stop, requiring one bounded
 move per update instead of an out-of-bounds move followed by correction. The user's Windows desktop acceptance confirmed Phase 2
 before this visual refinement; repeat appearance and taskbar placement below for
-v0.2.5, including an auto-hidden taskbar and secondary monitors.
+v0.2.6, including an auto-hidden taskbar and secondary monitors.
 
 ## Phase 2 manual Windows 11 acceptance
 
-1. On fresh startup check the two glossy blue capsules with a real desktop-visible gap,
+1. On fresh startup check the controls capsule and hidden upper strip, with a real desktop-visible gap when revealed,
    left microphone, top text strip and right Settings/Close buttons. The inactive microphone is
    red and slashed. With a valid cursor the waveform is a cyan straight line;
    without one it is a red straight line. Check additional clearance above the
@@ -148,15 +150,18 @@ v0.2.5, including an auto-hidden taskbar and secondary monitors.
 6. On multiple monitors with mixed DPI and negative coordinates, drag, change all
    five zoom stops, change taskbar/work area, and disconnect a monitor. Confirm
    the complete Widget scales and stays within the available work area.
-7. Hover each hit region: the top strip stays empty for one second, then bright yellow
-   contextual information fades in. Moving regions restarts the delay. Long hints
-   scroll to reveal the configured Hotkey and repeat continuously, with the same
-   dot separator between repetitions and no blank pause or restart jump. Check
-   the 11 DIP caption font and 1 DIP inter-panel gap. Eligibility updates visible hints.
-   Talking clears/suppresses hints; no popup window or focus theft. Confirm the
-   gap and rounded corners show the actual background and pass clicks through.
-   Check light, dark and System Settings themes. Real white raw text is Phase 4;
-   native fixture evidence exercises the ticker with clearly owned sample input.
+7. Hover each control/waveform region: the upper capsule remains invisible for
+   one second, then the whole capsule (rim/background and already-present text)
+   fades in over 180 ms. Check very bright blue 12 DIP hints, a 24 DIP strip height,
+   unchanged button sizes, and a 216 DIP total width. Long hints repeat without a
+   blank pause, using "..." between repetitions. Leaving clears/hides the strip.
+   Talking quickly reveals it with white raw text and suppresses hints. Changing
+   visibility never changes the reserved 62 DIP drag bounds; drag the waveform
+   to the top edge with the upper strip hidden, then reveal it and confirm it is
+   fully on-screen. The upper strip must never initiate a drag. Test the invisible
+   upper strip, gap and rounded corners for click-through without focus theft.
+   Check light, dark and System Settings themes. Real raw text remains Phase 4;
+   native fixture evidence exercises the ticker with owned sample input.
 8. Rebind a free combination and a combination already registered by another app.
    Confirm conflicts are shown and the previous Hotkey/preferences survive. Test
    both UK and US layouts, including changing layouts while Dictator is resident.

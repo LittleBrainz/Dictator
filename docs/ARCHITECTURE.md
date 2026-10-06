@@ -216,7 +216,7 @@ No microphone, network request, insertion API or audio buffer is introduced.
 
 The native Widget uses WS_EX_NOACTIVATE and MA_NOACTIVATE, SWP_NOACTIVATE
 placement, and do not call SetForegroundWindow during ordinary interaction. Tools
-is the explicit exception that asks C# to activate Settings. A 270 by 62 DIP
+is the explicit exception that asks C# to activate Settings. A 216 by 62 DIP
 Widget scales with DPI and the five persisted zoom stops. Body dragging is kept
 only in native host memory, clamped to monitor work areas and retained through
 close/reopen. Default placement is bottom-center, raised by half the scaled height
@@ -230,20 +230,25 @@ so cross-monitor dragging retains DPI handling and never paints a speculative
 off-screen/taskbar-overlapping location. Display/setting/DPI changes re-clamp
 placement.
 
-The Widget paints two glossy capsules with anti-aliased, double-buffered GDI+.
-Its HWND region is the union of two rounded regions, excluding the 1 DIP gap and
-rounded corners from painting and input. The desktop or underlying application
-is visible and receives pointer input through the gap. GDI+ follows host lifetime.
-Drawing and hit regions share the 270 by 62 DIP layout: 24 DIP text capsule, 1 DIP
-gap and 37 DIP controls capsule. Microphone is left, waveform middle, controls right.
-Inactive microphones remain red/slashed; the quiet line is cyan when eligible and
-red otherwise. Active Phase 2 waveform remains simulated until Phase 3.
+The Widget renders two glossy capsules into premultiplied GDI+ surfaces and
+presents a per-pixel layered HWND with `UpdateLayeredWindow`. Its rounded region
+excludes the 1 DIP gap/corners and, while idle, the entire upper capsule. The
+underlying application remains visible and receives clicks through those areas.
+The full 216 by 62 DIP HWND rectangle remains reserved for placement and clamping,
+independent of caption visibility. Layout is 24 DIP text, 1 DIP gap and 37 DIP
+controls. The 20% width reduction shortens the waveform and moves Settings/Close
+left; button/glyph sizes remain unchanged. Only the waveform starts a drag.
 
-Hover instructions are bright yellow single-line text inside the upper capsule after
-1000 ms, fading over 240 ms. Captions use an 11 DIP font. Long hints scroll gently as a continuous loop; the next copy follows the end with the same spaced middle-dot separator used between instructions. No popup tooltip HWND is
-created. Region changes/leave/drag/press clear hints; Talking suppresses them.
-Hover instructions are exposed as the Widget accessibility name; live transcript
-text is never copied into window titles or diagnostics.
+The complete upper capsule is invisible without Talking or a hover hint. After
+one-second hover, its background, border and already-present bright-blue (#70DEFF)
+12 DIP text fade in together over 180 ms. Talking reveals the same capsule with
+white raw text. Each presentation change preserves the full clamped rectangle;
+inactive content hides the capsule and clears its input region. The controls
+remain opaque throughout. Long hints repeat continuously with a measured spaced
+"..." delimiter between repetitions; the middle dot still joins instructions
+within each message. Region changes/leave/drag/press clear hints; Talking
+suppresses them. Hover instructions are exposed as the Widget accessibility name;
+live transcript text is never copied into window titles or diagnostics.
 
 An additive ABI 1 UI-thread `dictator_host_append_live_text` / managed
 `ResidentHost.AppendLiveText` bridge accepts future raw UTF-16 transcription

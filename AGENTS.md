@@ -4,11 +4,15 @@ This is a fresh implementation of Dictator, not a reconstruction of the deleted
 C++ prototype. Read `docs/SPECIFICATION.md` and the requested phase. Later explicit
 requirements override generic framework conventions. Phase 0 passed Windows CI and
 the user accepted the staged artifact. The user accepted Phases 1 and 2. The current scope is the user-requested Widget
-design refinement before Phase 3. Keep the two glossy blue capsules (270 x 62
-DIP) separated by a real desktop-visible, click-through gap. The upper strip
+design refinement before Phase 3. Keep the two glossy blue capsules (216 x 62
+DIP) with unchanged button sizes and a real 1 DIP desktop-visible, click-through gap.
+Keep the full height reserved for drag clamping even while the upper strip is hidden.
+Only the waveform initiates dragging. The upper strip
 shows white raw transcription scrolling right-to-left while Talking; off-state
-hover information fades in bright yellow after one second, without a separate tooltip
-window. Raw text means speech-to-text in the spoken language, before formatting.
+hover information is very bright blue, using a 12 DIP font. The entire upper
+capsule fades in over 180 ms with its text already present (after one second
+of hover), or immediately when Talking begins. Hide it when neither is active.
+Use a spaced "..." between repeats of long hints. No separate tooltip window. Raw text means speech-to-text in the spoken language, before formatting.
 Keep the left microphone, right Settings/Close controls, red/slashed inactive
 microphone, cyan quiet line with an eligible cursor, and red quiet line without
 one. Phase 2 has no real transcription; the live-text bridge accepts future

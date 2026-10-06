@@ -5,6 +5,8 @@
 #include <gdiplus.h>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
+#include <cstddef>
 #include "widget_painter.h"
 
 namespace widget_design {
@@ -56,18 +58,18 @@ void gear(Graphics& g, REAL x, REAL y) noexcept {
     SolidBrush white(Color(255, 242, 250, 255)); g.FillPath(&white, &shape);
 }
 void capsule(Graphics& g, REAL top, REAL panel_height, bool text) noexcept {
-    GraphicsPath rim; rounded(rim, .5f, top + .5f, 269, panel_height - 1, (panel_height - 1) / 2);
+    GraphicsPath rim; rounded(rim, .5f, top + .5f, static_cast<REAL>(width - 1), panel_height - 1, (panel_height - 1) / 2);
     LinearGradientBrush chrome(PointF(0, top), PointF(0, top + panel_height), Color(255, 168, 222, 255), Color(255, 16, 104, 173));
     const Color colors[] = {Color(255, 210, 239, 255), Color(255, 33, 113, 203), Color(255, 7, 32, 65),
         Color(255, 10, 51, 107), Color(255, 20, 163, 231), Color(255, 175, 238, 255)};
     const REAL stops[] = {0, .08f, .24f, .74f, .94f, 1};
     chrome.SetInterpolationColors(colors, stops, 6); g.FillPath(&chrome, &rim);
     stroke(g, rim, Color(255, 71, 164, 229), .45f);
-    GraphicsPath inside; rounded(inside, 1.8f, top + 1.8f, 266.4f, panel_height - 3.6f, (panel_height - 3.6f) / 2);
+    GraphicsPath inside; rounded(inside, 1.8f, top + 1.8f, width - 3.6f, panel_height - 3.6f, (panel_height - 3.6f) / 2);
     LinearGradientBrush glass(PointF(0, top + 2), PointF(0, top + panel_height - 2),
         text ? Color(255, 9, 23, 42) : Color(255, 9, 36, 78), Color(255, 1, 9, 24));
     g.FillPath(&glass, &inside); stroke(g, inside, Color(125, 144, 215, 255), .4f);
-    GraphicsPath highlight; highlight.AddLine(panel_height / 2, top + 1.25f, 270 - panel_height / 2, top + 1.25f);
+    GraphicsPath highlight; highlight.AddLine(panel_height / 2, top + 1.25f, width - panel_height / 2, top + 1.25f);
     stroke(g, highlight, Color(32, 70, 188, 255), 3);
     stroke(g, highlight, Color(235, 191, 237, 255), .45f);
 }
@@ -81,16 +83,16 @@ void draw_text(Graphics& g, const wchar_t* text, int count, REAL x, Color color)
     Font font(L"Segoe UI", text_font_size, FontStyleRegular, UnitPixel);
     StringFormat format(StringFormat::GenericTypographic());
     format.SetFormatFlags(StringFormatFlagsNoWrap | StringFormatFlagsMeasureTrailingSpaces);
-    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 4.5f), &format, &ink);
+    SolidBrush ink(color); g.DrawString(text, count, &font, PointF(x, 3.7f), &format, &ink);
 }
 }
-HRGN window_region(int client_width, int client_height) noexcept {
+HRGN window_region(int client_width, int client_height, bool caption_visible) noexcept {
     const int text_bottom = static_cast<int>(std::lround(static_cast<double>(client_height) * text_height / height));
     const int control_top = static_cast<int>(std::lround(static_cast<double>(client_height) * controls_top / height));
     const int control_height = client_height - control_top;
     const int text_radius = static_cast<int>(std::lround(static_cast<double>(client_width) * text_height / width));
     const int control_radius = static_cast<int>(std::lround(static_cast<double>(client_width) * (height - controls_top) / width));
-    auto top = CreateRoundRectRgn(0, 0, client_width, text_bottom, text_radius, text_bottom);
+    auto top = caption_visible ? CreateRoundRectRgn(0, 0, client_width, text_bottom, text_radius, text_bottom) : CreateRectRgn(0, 0, 0, 0);
     auto bottom = CreateRoundRectRgn(0, control_top, client_width, client_height, control_radius, control_height);
     if (!top || !bottom || CombineRgn(top, top, bottom, RGN_OR) == ERROR) {
         if (top) DeleteObject(top); if (bottom) DeleteObject(bottom); return nullptr;
@@ -108,24 +110,24 @@ float measure_text(const wchar_t* text, int count) noexcept {
 int hit_test(int client_width, int client_height, int x, int y) noexcept {
     if (client_width <= 0 || client_height <= 0 || x < 0 || y < 0 || x >= client_width || y >= client_height) return -1;
     const double dx = static_cast<double>(x) * width / client_width;
-    const double dy = static_cast<double>(y) * height / client_height;
-    if (dy < text_height) return 0;
-    if (dy < controls_top) return -1;
+    const int text_bottom = static_cast<int>(std::lround(static_cast<double>(client_height) * text_height / height));
+    const int control_top = static_cast<int>(std::lround(static_cast<double>(client_height) * controls_top / height));
+    if (y < text_bottom) return 4; // Caption never initiates a drag.
+    if (y < control_top) return -1;
     if (dx < 40) return 1;
-    if (dx >= 241) return 3;
-    if (dx >= 215) return 2;
+    if (dx >= width - 29) return 3;
+    if (dx >= width - 55) return 2;
     return 0;
 }
-void paint(HDC destination, int client_width, int client_height,
+void paint(HWND window, HDC destination, int client_width, int client_height,
     bool talking, bool eligible, int hover, int pressed, ULONGLONG timestamp,
-    const ticker_text& ticker, const wchar_t* hint, float hint_alpha, float hint_x,
+    const ticker_text& ticker, const wchar_t* hint, float caption_alpha, float hint_x,
     float hint_width, float hint_period) noexcept {
     if (client_width <= 0 || client_height <= 0) return;
     Bitmap frame(client_width, client_height, PixelFormat32bppPARGB); Graphics g(&frame);
     g.SetSmoothingMode(SmoothingModeAntiAlias); g.SetPixelOffsetMode(PixelOffsetModeHalf);
     g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit); g.Clear(Color(0, 0, 0, 0));
     g.ScaleTransform(static_cast<REAL>(client_width) / width, static_cast<REAL>(client_height) / height);
-    capsule(g, 0, text_height, true);
     const auto controls = g.Save();
     g.TranslateTransform(0, static_cast<REAL>(controls_top - 28)); // Keep the control artwork at its original size.
     capsule(g, 28, 37, false);
@@ -133,10 +135,10 @@ void paint(HDC destination, int client_width, int client_height,
     const Color mic_color = active ? Color(255, 25, 255, 123) : Color(255, 255, 57, 77);
     {
         const auto clip = g.Save();
-        GraphicsPath panel; rounded(panel, 1.8f, 29.8f, 266.4f, 33.4f, 16.7f);
+        GraphicsPath panel; rounded(panel, 1.8f, 29.8f, width - 3.6f, 33.4f, 16.7f);
         g.SetClip(&panel, CombineModeIntersect);
         spotlight(g, 0, 28, 53, 37, Color(60, mic_color.GetR(), mic_color.GetG(), mic_color.GetB()));
-        spotlight(g, 43, 32, 171, 29, Color(55, 0, 90, 248)); g.Restore(clip);
+        spotlight(g, 43, 32, waveform_right - 40, 29, Color(55, 0, 90, 248)); g.Restore(clip);
     }
     button(g, 19.5f, 46.5f, 14.7f, true, pressed == 1, mic_color);
     GraphicsPath mic; rounded(mic, 16.8f, 38.9f, 5.4f, 10.2f, 2.7f);
@@ -151,9 +153,9 @@ void paint(HDC destination, int client_width, int client_height,
     }
     const Color wave = eligible ? Color(255, 35, 204, 255) : Color(255, 255, 57, 77);
     if (active) {
-        constexpr int bars = 35;
+        constexpr int bars = 25;
         for (int i = 0; i < bars; ++i) {
-            const REAL x = 44 + static_cast<REAL>(i) * 4.9f;
+            const REAL x = waveform_left + static_cast<REAL>(i) * (waveform_right - waveform_left) / (bars - 1);
             const double phase = static_cast<double>(timestamp) / 210 + i * .42;
             const double envelope = std::pow(std::sin(i * 3.14159265358979323846 / (bars - 1)), 2);
             const REAL half = static_cast<REAL>(.45 + 13.7 * envelope * (.2 + .8 * std::abs(std::sin(phase))));
@@ -163,35 +165,73 @@ void paint(HDC destination, int client_width, int client_height,
             line(g, Color(170, 182, 252, 255), .5f, x, 46.5f - half, x, 46.5f + half);
         }
     } else {
-        line(g, Color(25, wave.GetR(), wave.GetG(), wave.GetB()), 7, 44, 46.5f, 211, 46.5f);
-        line(g, Color(70, wave.GetR(), wave.GetG(), wave.GetB()), 3.4f, 44, 46.5f, 211, 46.5f);
-        line(g, wave, 1.1f, 44, 46.5f, 211, 46.5f);
+        line(g, Color(25, wave.GetR(), wave.GetG(), wave.GetB()), 7, 44, 46.5f, waveform_right, 46.5f);
+        line(g, Color(70, wave.GetR(), wave.GetG(), wave.GetB()), 3.4f, 44, 46.5f, waveform_right, 46.5f);
+        line(g, wave, 1.1f, 44, 46.5f, waveform_right, 46.5f);
     }
+    const auto right_buttons = g.Save(); g.TranslateTransform(static_cast<REAL>(width - 270), 0);
     button(g, 229, 46.5f, 10.2f, hover == 2, pressed == 2, Color(255, 50, 194, 255));
     gear(g, 229, 46.5f);
     button(g, 253, 46.5f, 11, hover == 3, pressed == 3, Color(255, 50, 194, 255));
     line(g, Color(255, 242, 250, 255), 1.7f, 249.2f, 42.7f, 256.8f, 50.3f);
     line(g, Color(255, 242, 250, 255), 1.7f, 249.2f, 50.3f, 256.8f, 42.7f);
-    g.Restore(controls);
-    {
-        const auto clip = g.Save(); g.SetClip(RectF(9, 2, 252, 20), CombineModeIntersect);
+    g.Restore(right_buttons); g.Restore(controls);
+    if (caption_alpha > 0) {
+        // Render the complete text capsule first, including already-present text.
+        // Apply alpha once to this group, leaving the controls fully opaque.
+        Bitmap caption(client_width, client_height, PixelFormat32bppPARGB);
+        Graphics text(&caption); text.Clear(Color(0, 0, 0, 0));
+        text.SetSmoothingMode(SmoothingModeAntiAlias); text.SetPixelOffsetMode(PixelOffsetModeHalf);
+        text.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+        text.ScaleTransform(static_cast<REAL>(client_width) / width, static_cast<REAL>(client_height) / height);
+        capsule(text, 0, text_height, true);
+        text.SetClip(RectF(text_left, 2, text_width, 20), CombineModeIntersect);
         if (active) {
             REAL x = ticker.x();
             for (const auto& part : ticker.segments()) {
-                draw_text(g, part.text.data(), static_cast<int>(part.text.size()), x, Color(255, 249, 253, 255)); x += part.width;
+                draw_text(text, part.text.data(), static_cast<int>(part.text.size()), x, Color(255, 249, 253, 255)); x += part.width;
             }
-        } else if (hint && hint_alpha > 0) {
-            const Color ink(static_cast<BYTE>(std::clamp(hint_alpha, 0.f, 1.f) * 255), 255, 255, 0);
-            draw_text(g, hint, -1, hint_x, ink);
+        } else if (hint && hint[0]) {
+            const Color ink(255, 112, 222, 255); // Very bright ice blue, #70DEFF.
+            draw_text(text, hint, -1, hint_x, ink);
             if (hint_period > 0) {
-                draw_text(g, hint_separator, -1, hint_x + hint_width, ink);
-                // Draw the next copy now, rather than waiting for the first to disappear.
-                draw_text(g, hint, -1, hint_x + hint_period, ink);
+                draw_text(text, hint_repeat_separator, -1, hint_x + hint_width, ink);
+                draw_text(text, hint, -1, hint_x + hint_period, ink);
             }
         }
-        g.Restore(clip);
+        text.Flush(FlushIntentionSync);
+        const ColorMatrix fade = {{{1,0,0,0,0}, {0,1,0,0,0}, {0,0,1,0,0},
+            {0,0,0,std::clamp(caption_alpha, 0.f, 1.f),0}, {0,0,0,0,1}}};
+        ImageAttributes attributes; attributes.SetColorMatrix(&fade);
+        g.ResetTransform();
+        g.DrawImage(&caption, Rect(0, 0, client_width, client_height), 0, 0, client_width, client_height, UnitPixel, &attributes);
     }
     g.Flush(FlushIntentionSync);
-    Graphics output(destination); output.DrawImage(&frame, 0, 0, client_width, client_height);
+    if (destination) {
+        Graphics output(destination); output.DrawImage(&frame, 0, 0, client_width, client_height);
+        return;
+    }
+    // A per-pixel layered surface blends the capsule with the actual desktop.
+    BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = client_width; info.bmiHeader.biHeight = -client_height;
+    info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
+    const auto screen = GetDC(nullptr), memory = CreateCompatibleDC(screen);
+    void* pixels{}; const auto bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+    if (memory && bitmap && pixels) {
+        const auto old = SelectObject(memory, bitmap);
+        BitmapData data{}; const Rect bounds(0, 0, client_width, client_height);
+        if (frame.LockBits(&bounds, ImageLockModeRead, PixelFormat32bppPARGB, &data) == Ok) {
+            const auto row_bytes = static_cast<std::size_t>(client_width) * 4;
+            for (int y = 0; y < client_height; ++y)
+                std::memcpy(static_cast<BYTE*>(pixels) + y * row_bytes,
+                    static_cast<const BYTE*>(data.Scan0) + static_cast<std::ptrdiff_t>(y) * data.Stride, row_bytes);
+            frame.UnlockBits(&data);
+            const POINT source{}; const SIZE size{client_width, client_height};
+            const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+            UpdateLayeredWindow(window, screen, nullptr, &size, memory, &source, 0, &blend, ULW_ALPHA);
+        }
+        SelectObject(memory, old);
+    }
+    if (bitmap) DeleteObject(bitmap); if (memory) DeleteDC(memory); if (screen) ReleaseDC(nullptr, screen);
 }
 }

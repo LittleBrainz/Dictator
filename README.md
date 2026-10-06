@@ -7,7 +7,7 @@ editable-cursor gating and simulated waveform preview, plus Dictator Settings,
 profile preferences, single-instance activation and self-contained distribution.
 Audio capture, transcription and text insertion are not implemented yet.
 
-Download **Dictator v0.2.5** from a successful Windows Actions run, extract once, and
+Download **Dictator v0.2.6** from a successful Windows Actions run, extract once, and
 launch the small root `Dictator.exe` launcher. The full self-contained application
 and runtimes stay under `lib/WinUI`; startup does not extract them into Temp. No
 separate .NET, Windows App SDK, or development stack is required. Persistent user

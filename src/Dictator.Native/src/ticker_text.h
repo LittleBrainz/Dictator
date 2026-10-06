@@ -5,23 +5,38 @@
 #include <deque>
 #include <string>
 #include <utility>
+#include "widget_layout.h"
 
 // UI-thread presentation state only. No provider, formatting, persistence or logging.
 namespace widget_design {
 inline constexpr wchar_t hint_separator[] = L"   ·   ";
+inline constexpr wchar_t hint_repeat_separator[] = L"   ...   ";
 inline float hint_scroll_x(float period, uint64_t elapsed) noexcept {
     // One initial reading pause; repeated copies then move without a wrap pause.
     if (period <= 0 || elapsed <= 1200) return 9;
     return 9 - std::fmod(static_cast<float>(elapsed - 1200) * .024f, period);
 }
-inline float hover_opacity(uint64_t elapsed) noexcept {
-    return elapsed > 1000 ? std::min(1.f, static_cast<float>(elapsed - 1000) / 240) : 0;
-}
+class caption_visibility {
+public:
+    static constexpr uint64_t fade_duration = 180;
+    bool set_visible(bool value, uint64_t now) noexcept {
+        if (visible_ == value) return false;
+        visible_ = value; began_at_ = now; return true;
+    }
+    bool visible() const noexcept { return visible_; }
+    float opacity(uint64_t now) const noexcept {
+        return visible_ ? std::min(1.f, static_cast<float>(now - began_at_) / static_cast<float>(fade_duration)) : 0;
+    }
+    bool animating(uint64_t now) const noexcept { return visible_ && now - began_at_ < fade_duration; }
+private:
+    bool visible_{};
+    uint64_t began_at_{};
+};
 class ticker_text {
 public:
     struct segment { std::wstring text; float width; };
     static constexpr std::size_t max_characters = 4096, max_segments = 128;
-    static constexpr float entry_x = 260, exit_x = 9, speed = 64; // DIP / second
+    static constexpr float entry_x = width - 10, exit_x = text_left, speed = 64; // DIP / second
 
     void clear(uint64_t now) noexcept {
         segments_.clear(); characters_ = 0; x_ = entry_x; updated_at_ = now;
