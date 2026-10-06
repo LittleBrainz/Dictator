@@ -38,6 +38,7 @@ jobs:
           name: Phase1-test-results
           path: |
             artifacts/test-results/
+            artifacts/native/Testing/Temporary/LastTest.log
             artifacts/publish-manifest.txt
             artifacts/package smoke with spaces*/*.json
           if-no-files-found: ignore

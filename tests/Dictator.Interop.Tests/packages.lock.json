@@ -86,6 +86,9 @@
         "dependencies": {
           "xunit.extensibility.core": "[2.9.3]"
         }
+      },
+      "dictator.core": {
+        "type": "Project"
       }
     }
   }

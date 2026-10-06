@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         RefreshPreferences();
         IdentityText.Text = owner.DiagnosticsText;
         WasActivated = true;
+        AppWindow.Show();
         Activate();
     }
     internal void Hide() => AppWindow.Hide();

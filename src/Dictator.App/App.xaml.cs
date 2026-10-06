@@ -21,6 +21,7 @@ public partial class App : Application
     private double managedReadyMs;
     private double widgetReadyMs;
     private double? settingsActivationMs;
+    private readonly Queue<string> recentErrors = new();
     internal bool RestartRequested { get; private set; }
     internal bool IsProbe => options.IsProbe;
     internal bool IsStopping => stopping;
@@ -38,7 +39,8 @@ public partial class App : Application
         Process creation to Widget shown (not a first-paint measurement): {widgetReadyMs:F2} ms
         Last Settings activation call duration (not first paint): {(settingsActivationMs.HasValue ? settingsActivationMs.Value.ToString("F2") + " ms" : "not activated")}
         Provider connection: not configured
-        Recent error: {SettingsError ?? "none"}
+        Current settings error: {SettingsError ?? "none"}
+        Recent sanitized errors: {(recentErrors.Count == 0 ? "none" : string.Join(Environment.NewLine, recentErrors))}
         """;
 
     internal App(StartupReport report, LaunchOptions options, Stopwatch managedTimer)
@@ -50,6 +52,7 @@ public partial class App : Application
         Startup = new(report.DistributionRoot, options.IsTest);
         if (!IsProbe) Preferences = Store.Load();
         SettingsError = Store.Error;
+        if (SettingsError is not null) RememberError(SettingsError);
         InitializeComponent();
         UnhandledException += (_, args) =>
         {
@@ -108,6 +111,7 @@ public partial class App : Application
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
         {
             SettingsError = Store.Error ?? ("The preference could not be saved. " + error.Message);
+            RememberError(SettingsError);
         }
         settings?.RefreshPreferences();
     }
@@ -133,6 +137,7 @@ public partial class App : Application
             if (changed && before is not null)
                 try { Startup.Restore(before); } catch (Exception rollback) when (rollback is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
             SettingsError = Store.Error ?? "Start with Windows could not be changed. " + error.GetType().Name;
+            RememberError(SettingsError);
         }
         settings?.RefreshPreferences();
     }
@@ -166,6 +171,11 @@ public partial class App : Application
             catch (Exception error) { completion.SetException(error); }
         })) completion.TrySetException(new InvalidOperationException("Resident dispatcher is unavailable."));
         return completion.Task;
+    }
+    private void RememberError(string message)
+    {
+        if (recentErrors.Count == 8) recentErrors.Dequeue();
+        recentErrors.Enqueue($"{DateTime.UtcNow:O} {message}");
     }
     private string Snapshot() => JsonSerializer.Serialize(new {
         status = "ok", processId = Environment.ProcessId,

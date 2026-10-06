@@ -9,6 +9,8 @@ public static class DictatorWindows {
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
 }
 '@
 $data = Join-Path $EvidenceRoot 'isolated profile 中文/.dictator'
@@ -67,12 +69,21 @@ try {
     if ($closed.settingsVisible -or -not $closed.trayReady -or -not $closed.widgetVisible -or $hostProcess.HasExited) {
         throw 'Closing Settings ended residence or hid the Widget/tray.'
     }
+    $reopened = Request 'open-settings'
+    if (-not $reopened.settingsVisible -or $reopened.settingsHandle -ne $manual.settingsHandle) { throw 'The hidden Settings window could not be recovered.' }
+    $null = [DictatorWindows]::PostMessage([IntPtr]$reopened.settingsHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)
+    Start-Sleep -Milliseconds 150
     $null = [DictatorWindows]::PostMessage([IntPtr]$closed.widgetHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)
     Start-Sleep -Milliseconds 150
     $dismissed = Request 'snapshot'
     if ($dismissed.widgetVisible) { throw 'Widget close did not dismiss the Widget.' }
     $foreground = [DictatorWindows]::GetForegroundWindow()
-    $opened = Request 'open-widget'
+    # Deliver the real version-4 tray left-click notification to its owner. Native
+    # polling and the managed resident dispatcher must recover the Widget.
+    $trayOwner = [DictatorWindows]::GetWindow([IntPtr]$dismissed.widgetHandle, 4)
+    $null = [DictatorWindows]::SendMessage($trayOwner, 0x8011, [IntPtr]::Zero, [IntPtr]0x10400)
+    Start-Sleep -Milliseconds 150
+    $opened = Request 'snapshot'
     if (-not $opened.widgetVisible -or [DictatorWindows]::GetForegroundWindow() -ne $foreground) { throw 'Open Widget stole foreground focus or failed.' }
     $changed = Request 'set-preferences'
     if ($changed.preferences.Theme -ne 'Dark' -or $changed.preferences.WidgetZoom -ne 1.155 -or
